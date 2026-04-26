@@ -1,0 +1,47 @@
+# ── User data & cache (runtime-generated, never commit) ──
+data/
+reports/
+
+# ── Secrets ──
+.env
+config.json
+
+# ── Python bytecode ──
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ── Test & coverage ──
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# ── Build / packaging ──
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual environments ──
+.venv/
+venv/
+env/
+
+# ── macOS ──
+.DS_Store
+**/.DS_Store
+
+# ── Claude Code local state ──
+.claude/
+PLAN.md
+
+# ── NLTK downloaded data (if stored locally) ──
+nltk_data/
+
+# ── Editor / IDE ──
+.vscode/
+.idea/
+*.swp
+*~
+PLAN.md

@@ -1,0 +1,39 @@
+{
+  "data": {
+    "price_cache_ttl_hours": 6,
+    "news_cache_ttl_hours": 1,
+    "price_history_years": 1
+  },
+  "strategy_d": {
+    "kd_window": 10,
+    "n_bars": 3,
+    "recovery_pct": 0.7,
+    "kd_k_threshold": 20,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "kd_k": 9,
+    "kd_d": 3,
+    "kd_smooth_k": 3
+  },
+  "bias": {
+    "period": 20,
+    "available_periods": [10, 20, 60]
+  },
+  "news": {
+    "days_lookback": 14,
+    "weight": 0.3
+  },
+  "ui": {
+    "default_ticker": "2330.TW",
+    "default_period": "6M",
+    "available_periods": ["1D", "5D", "1M", "6M", "1Y"]
+  },
+  "watchlist_defaults": [
+    {"ticker": "2330.TW", "name": "台積電"},
+    {"ticker": "2317.TW", "name": "鴻海"},
+    {"ticker": "TSLA",    "name": "Tesla"},
+    {"ticker": "NVDA",    "name": "NVIDIA"},
+    {"ticker": "PLTR",    "name": "Palantir"}
+  ]
+}

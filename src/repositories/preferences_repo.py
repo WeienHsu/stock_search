@@ -1,0 +1,30 @@
+from typing import Any
+from src.repositories._backends.json_backend import JsonBackend
+
+_backend = JsonBackend()
+_KEY = "preferences"
+
+_DEFAULTS: dict[str, Any] = {
+    "show_macd": True,
+    "show_kd": True,
+    "show_bias": True,
+    "show_news": True,
+    "bias_period": 20,
+    "ma_periods": [5, 20, 60],
+    "default_period": "6M",
+}
+
+
+def get_preferences(user_id: str) -> dict[str, Any]:
+    saved = _backend.get(user_id, _KEY, default={})
+    return {**_DEFAULTS, **saved}
+
+
+def save_preferences(user_id: str, prefs: dict[str, Any]) -> None:
+    _backend.save(user_id, _KEY, prefs)
+
+
+def update_preference(user_id: str, key: str, value: Any) -> None:
+    prefs = get_preferences(user_id)
+    prefs[key] = value
+    save_preferences(user_id, prefs)
