@@ -63,3 +63,7 @@ class SqliteBackend(RepositoryBase):
                 "SELECT 1 FROM kv_store WHERE user_id = ? AND key = ?",
                 (user_id, key),
             ).fetchone() is not None
+
+    def purge_user(self, user_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM kv_store WHERE user_id = ?", (user_id,))

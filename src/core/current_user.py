@@ -8,3 +8,10 @@ def current_user() -> str:
         return st.session_state.get("user_id", "local")
     except Exception:
         return "local"
+
+
+def current_user_is_admin() -> bool:
+    try:
+        return bool(st.session_state.get("is_admin", False))
+    except Exception:
+        return False

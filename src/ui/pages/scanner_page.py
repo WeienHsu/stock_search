@@ -1,5 +1,6 @@
 import streamlit as st
 
+from src.core.sorting import sort_watchlist_items
 from src.repositories.watchlist_repo import get_watchlist
 from src.scanner.watchlist_scanner import scan_watchlist
 
@@ -8,7 +9,7 @@ def render(cfg: dict, user_id: str) -> None:
     st.markdown("## 市場掃描器")
     st.caption("掃描自選清單，標示當前 Strategy D 訊號狀態")
 
-    items = get_watchlist(user_id)
+    items = sort_watchlist_items(get_watchlist(user_id))
     if not items:
         st.info("自選清單為空，請先至「設定」頁面新增股票。")
         return

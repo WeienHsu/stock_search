@@ -35,3 +35,9 @@ class JsonBackend(RepositoryBase):
 
     def exists(self, user_id: str, key: str) -> bool:
         return self._path(user_id, key).exists()
+
+    def purge_user(self, user_id: str) -> None:
+        import shutil
+        user_dir = _BASE / user_id
+        if user_dir.exists():
+            shutil.rmtree(user_dir)

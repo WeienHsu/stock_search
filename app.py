@@ -1,9 +1,9 @@
 import streamlit as st
 
-from src.core.current_user import current_user
+from src.core.current_user import current_user, current_user_is_admin
 from src.ui.theme import apply_theme
 from src.ui.sidebar import render_sidebar
-from src.ui.pages import dashboard, settings_page, backtest_page, scanner_page, risk_page
+from src.ui.pages import dashboard, settings_page, backtest_page, scanner_page, risk_page, admin_page
 from src.ui.pages.login_page import render as render_login
 
 st.set_page_config(
@@ -32,9 +32,13 @@ if st.sidebar.button("登出", use_container_width=True):
 st.sidebar.markdown("---")
 
 # ── Navigation ──
+pages = ["📊 Dashboard", "🔍 掃描器", "🧮 回測", "🛡️ 風控", "⚙️ 設定"]
+if current_user_is_admin():
+    pages.append("👑 管理")
+
 page = st.sidebar.radio(
     "",
-    ["📊 Dashboard", "🔍 掃描器", "🧮 回測", "🛡️ 風控", "⚙️ 設定"],
+    pages,
     label_visibility="collapsed",
 )
 st.sidebar.markdown("---")
@@ -49,5 +53,7 @@ elif page == "🧮 回測":
     backtest_page.render(cfg, user_id)
 elif page == "🛡️ 風控":
     risk_page.render(cfg, user_id)
+elif page == "👑 管理":
+    admin_page.render(user_id)
 else:
     settings_page.render(user_id)

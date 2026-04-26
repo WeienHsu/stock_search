@@ -20,3 +20,6 @@ class RepositoryBase(ABC):
     @abstractmethod
     def exists(self, user_id: str, key: str) -> bool:
         """Return True if the key exists for the given user."""
+
+    def purge_user(self, user_id: str) -> None:
+        """Remove all data for the given user."""
