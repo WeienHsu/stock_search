@@ -4,6 +4,7 @@ from src.core.current_user import current_user
 from src.ui.theme import apply_theme
 from src.ui.sidebar import render_sidebar
 from src.ui.pages import dashboard, settings_page, backtest_page, scanner_page, risk_page
+from src.ui.pages.login_page import render as render_login
 
 st.set_page_config(
     page_title="Stock Intelligence",
@@ -14,7 +15,21 @@ st.set_page_config(
 
 apply_theme()
 
+# ── Auth gate ──
+if "user_id" not in st.session_state:
+    render_login()
+    st.stop()
+
 user_id = current_user()
+
+# ── Sidebar: user info + logout ──
+st.sidebar.markdown(f"**Stock Intelligence**")
+st.sidebar.caption(f"👤 {st.session_state.get('username', user_id)}")
+if st.sidebar.button("登出", use_container_width=True):
+    st.session_state.clear()
+    st.rerun()
+
+st.sidebar.markdown("---")
 
 # ── Navigation ──
 page = st.sidebar.radio(

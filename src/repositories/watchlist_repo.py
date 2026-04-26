@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.repositories._backends.json_backend import JsonBackend
+from src.repositories._backends import get_user_backend
 
-_backend = JsonBackend()
+_backend = get_user_backend()
 _KEY = "watchlist"
 
 _DEFAULTS_PATH = Path(__file__).parents[2] / "config" / "default_settings.json"

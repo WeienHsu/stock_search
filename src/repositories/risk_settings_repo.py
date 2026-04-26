@@ -1,7 +1,8 @@
 from typing import Any
-from src.repositories._backends.json_backend import JsonBackend
 
-_backend = JsonBackend()
+from src.repositories._backends import get_user_backend
+
+_backend = get_user_backend()
 _KEY = "risk_settings"
 
 _DEFAULTS: dict[str, Any] = {

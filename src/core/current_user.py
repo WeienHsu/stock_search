@@ -1,3 +1,10 @@
+import streamlit as st
+
+
 def current_user() -> str:
-    """Return the current user_id. Phase 1: always "local". Phase 3: read from session."""
-    return "local"
+    """Return the authenticated user_id from session state.
+    Falls back to 'local' when called outside a Streamlit session (e.g. tests)."""
+    try:
+        return st.session_state.get("user_id", "local")
+    except Exception:
+        return "local"
