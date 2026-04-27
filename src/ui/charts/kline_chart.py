@@ -121,6 +121,7 @@ def build_combined_chart(
     show_kd: bool,
     show_bias: bool,
     x_range_start: str | None = None,
+    period: str = "",
 ) -> go.Figure:
     """Single subplot figure with shared x-axis. Arrows at top, vertical dashed lines on signals."""
     P = _get_palette()
@@ -197,7 +198,11 @@ def build_combined_chart(
             )
 
     _apply_layout(fig)
-    fig.update_layout(height=300 + 200 * (n_rows - 1), showlegend=True)
+    fig.update_layout(
+        height=300 + 200 * (n_rows - 1),
+        showlegend=True,
+        uirevision=f"{ticker}_{period}",  # preserve user zoom/drag unless ticker or period changes
+    )
 
     # Rangeslider + initial x-axis range
     if x_range_start and not df.empty:

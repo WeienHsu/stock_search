@@ -1,10 +1,12 @@
+from datetime import datetime, timedelta
+
 import pandas as pd
 import streamlit as st
 
 from src.core.finnhub_mode import MissingFinnhubKey
 from src.core.strategy_registry import get as get_strategy
 from src.data.news_fetcher import fetch_news
-from src.data.price_fetcher import fetch_prices, fetch_prices_for_strategy
+from src.data.price_fetcher import fetch_prices_for_strategy
 from src.data.sentiment_analyzer import analyze_sentiment
 from src.data.ticker_utils import normalize_ticker
 from src.indicators.bias import add_bias
@@ -31,14 +33,13 @@ def render(cfg: dict, user_id: str) -> None:
 
     # ── Fetch data ──
     with st.spinner(f"載入 {ticker} 資料…"):
-        df_display  = fetch_prices(ticker, period=cfg["period"])
-        df_strategy = fetch_prices_for_strategy(ticker, years=1)
+        df_strategy = fetch_prices_for_strategy(ticker, years=5)
 
-    if df_display.empty:
+    if df_strategy.empty:
         st.error(f"無法取得 **{ticker}** 的價格資料，請確認代號是否正確。")
         return
 
-    # ── Compute indicators on full 1Y data to avoid short-period row shortage ──
+    # ── Compute indicators on full 5Y data to avoid short-period row shortage ──
     sd_params = cfg["strategy_d"]
     failed_indicators: list[str] = []
 
@@ -65,10 +66,13 @@ def render(cfg: dict, user_id: str) -> None:
     except ValueError:
         failed_indicators.append("Bias")
 
-    # Initial x-axis range = start of selected period (scrollbar reveals earlier history)
-    x_range_start: str | None = df_display["date"].iloc[0] if not df_display.empty else None
+    # Initial x-axis visible range derived from selected quick-zoom period
+    _PERIOD_DAYS = {"1M": 31, "3M": 92, "6M": 183, "1Y": 365, "3Y": 1095, "5Y": 1825}
+    _cutoff = (datetime.now() - timedelta(days=_PERIOD_DAYS.get(cfg["period"], 183))).strftime("%Y-%m-%d")
+    _visible = df_strategy[df_strategy["date"] >= _cutoff]
+    x_range_start: str | None = _visible["date"].iloc[0] if not _visible.empty else df_strategy["date"].iloc[0]
 
-    # ── Strategy D signals (full 1Y) ──
+    # ── Strategy D signals (full 5Y) ──
     signal_dates: list[str] = []
     today_signal = False
     df_s: pd.DataFrame | None = None
@@ -94,7 +98,7 @@ def render(cfg: dict, user_id: str) -> None:
     if failed_indicators:
         st.warning(f"⚠️ 資料不足，以下技術指標無法計算：{', '.join(failed_indicators)}")
 
-    # ── Combined chart: full 1Y data with rangeslider; initial view = selected period ──
+    # ── Combined chart: full 5Y data with rangeslider; initial view = selected quick-zoom period ──
     fig = build_combined_chart(
         df_strategy, ticker,
         ma_periods=cfg["ma_periods"],
@@ -104,8 +108,13 @@ def render(cfg: dict, user_id: str) -> None:
         show_kd=cfg["show_kd"] and "K" in df_strategy.columns,
         show_bias=cfg["show_bias"],
         x_range_start=x_range_start,
+        period=cfg["period"],
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(
+        fig, use_container_width=True,
+        config={"displayModeBar": False},
+        key=f"main_chart_{ticker}",
+    )
     st.caption("提示：使用底部滾動條可查看更早歷史；拖曳 X 軸可縮放，各面板同步移動")
 
     # ── Strategy condition diagnosis ──
@@ -125,7 +134,7 @@ def render(cfg: dict, user_id: str) -> None:
                 date_str = str(diag_date)
                 conditions = diagnose_strategy_d(df_s, date_str, sd_params)
                 if conditions is None:
-                    st.warning(f"日期 {date_str} 不在資料範圍內（僅有最近 1 年資料）")
+                    st.warning(f"日期 {date_str} 不在資料範圍內（僅有最近 5 年資料）")
                 else:
                     all_pass = all(c["passed"] for c in conditions)
                     if all_pass:
@@ -134,8 +143,35 @@ def render(cfg: dict, user_id: str) -> None:
                         st.error(f"❌ 部分條件未通過 — {date_str} 無 Strategy D 訊號")
                     for c in conditions:
                         icon = "✅" if c["passed"] else "❌"
-                        st.markdown(f"{icon} **{c['condition']}**")
-                        st.caption(c["detail"])
+                        st.markdown(f"**{icon} {c['condition']}**")
+                        rows = []
+                        for m in c.get("metrics", []):
+                            actual = m["actual"]
+                            target = m.get("target", "—")
+                            unit = m.get("unit", "")
+                            m_passed = m.get("passed")
+                            # Progress bar for numeric metrics
+                            if "progress" in m and isinstance(actual, (int, float)):
+                                ratio = max(0.0, min(1.0, float(m["progress"])))
+                                if unit == "%":
+                                    bar_text = f"{m['name']}：{actual:.1%} / 需 {m.get('comparison','')} {target:.0%}（已達 {ratio:.0%}）"
+                                else:
+                                    bar_text = f"{m['name']}：{actual:.2f} / {m.get('comparison','')} {target}（已達 {ratio:.0%}）"
+                                st.progress(ratio, text=bar_text)
+                            # Build table row
+                            if isinstance(actual, float):
+                                actual_str = f"{actual:.1%}" if unit == "%" else f"{actual:.2f}"
+                            else:
+                                actual_str = str(actual)
+                            if isinstance(target, float):
+                                target_str = f"{m.get('comparison','')} {target:.1%}".strip() if unit == "%" else f"{m.get('comparison','')} {target:.2f}".strip()
+                            else:
+                                target_str = f"{m.get('comparison','')} {target}".strip()
+                            pass_icon = "✅" if m_passed is True else ("❌" if m_passed is False else "—")
+                            rows.append({"項目": m["name"], "目前值": actual_str, "目標": target_str, "通過": pass_icon})
+                        if rows:
+                            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                        st.caption(c.get("summary", ""))
 
     # ── News & sentiment ──
     if cfg["show_news"]:

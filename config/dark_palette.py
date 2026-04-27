@@ -14,10 +14,11 @@ BROWN  = "#C4A870"
 GOLD   = "#F0C060"
 
 MA_COLORS = {
-    5:  "#8A9AAA",
-    10: "#7A8A9A",
-    20: "#E8A45A",
-    60: "#5B9BD5",
+    5:   "#8A9AAA",
+    10:  "#7A8A9A",
+    20:  "#E8A45A",
+    60:  "#5B9BD5",
+    120: "#A87ECC",
 }
 
 PLOTLY_THEME = {

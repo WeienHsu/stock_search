@@ -120,7 +120,11 @@ def diagnose_strategy_d(
     """Per-condition pass/fail analysis for a specific date.
 
     Returns None if the date is not found in df.
-    Each entry: {"condition": str, "passed": bool, "detail": str}
+    Each entry: {
+        "condition": str, "passed": bool,
+        "metrics": list[dict],  # sub-conditions with actual/target/progress
+        "summary": str,         # human-readable fallback
+    }
     """
     required = {"K", "D", "histogram"}
     if not required.issubset(df.columns):
@@ -141,37 +145,70 @@ def diagnose_strategy_d(
 
     # ── MACD 直方圖收斂 ──
     macd_ok = False
-    macd_detail = "資料不足"
+    macd_summary = "資料不足"
+    macd_metrics: list[dict] = []
+
     if len(df_up) >= n_bars + 1:
         hist = df_up["histogram"]
         recent = hist.iloc[-n_bars:]
-        all_neg = not recent.isna().any() and (recent < 0).all()
-        if all_neg:
-            converging = all(recent.iloc[j] > recent.iloc[j - 1] for j in range(1, n_bars))
+        has_nan = recent.isna().any()
+        all_neg = not has_nan and (recent < 0).all()
+        converging = all(recent.iloc[j] > recent.iloc[j - 1] for j in range(1, n_bars)) if n_bars > 1 else True
+
+        if has_nan:
+            macd_summary = "含 NaN，MACD 指標可能尚未暖機"
+            macd_metrics = [{"name": "近期直方圖", "actual": "含 NaN", "target": "無 NaN", "passed": False}]
+        else:
+            macd_metrics.append({
+                "name": f"最近 {n_bars} 根全為負值",
+                "actual": "是" if all_neg else "否（含正值）",
+                "target": "是",
+                "passed": all_neg,
+            })
+            macd_metrics.append({
+                "name": "嚴格遞增收斂",
+                "actual": "是" if converging else "否",
+                "target": "是",
+                "passed": converging,
+            })
+
             lookback = hist.iloc[-20:] if len(hist) >= 20 else hist
             neg_vals = lookback[lookback < 0]
-            if converging and not neg_vals.empty:
+
+            if all_neg and converging and not neg_vals.empty:
                 trough = float(neg_vals.min())
-                threshold = abs(trough) * (1 - recovery_pct)
                 current = abs(float(recent.iloc[-1]))
+                threshold = abs(trough) * (1 - recovery_pct)
+                actual_recovery = 1.0 - current / abs(trough) if trough != 0 else 0.0
                 macd_ok = current < threshold
-                actual_recovery = 1 - current / abs(trough) if trough != 0 else 0
-                macd_detail = (
+                progress = max(0.0, min(actual_recovery / recovery_pct, 1.0)) if recovery_pct > 0 else 0.0
+                macd_metrics.append({
+                    "name": "MACD 回彈比例",
+                    "actual": actual_recovery,
+                    "target": recovery_pct,
+                    "unit": "%",
+                    "comparison": "≥",
+                    "passed": macd_ok,
+                    "progress": progress,
+                })
+                macd_summary = (
                     f"最近 {n_bars} 根：{', '.join(f'{v:.4f}' for v in recent.tolist())}｜"
                     f"谷底 {trough:.4f}｜恢復比例 {actual_recovery:.1%}（需 ≥ {recovery_pct:.0%}）"
                 )
+            elif not all_neg:
+                macd_summary = f"最近 {n_bars} 根直方圖含非負值（需全部為負值）"
             elif not converging:
-                macd_detail = f"最近 {n_bars} 根直方圖未持續收斂（未嚴格遞增）"
+                macd_summary = f"最近 {n_bars} 根直方圖未持續收斂（未嚴格遞增）"
             else:
-                macd_detail = "近期無負值直方圖可計算谷底"
-        elif recent.isna().any():
-            macd_detail = "含 NaN，MACD 指標可能尚未暖機"
-        else:
-            macd_detail = f"最近 {n_bars} 根直方圖含非負值（需全部為負值）"
+                macd_summary = "近期無負值直方圖可計算谷底"
+    else:
+        macd_metrics = [{"name": "資料量", "actual": f"{len(df_up)} 根", "target": f"≥ {n_bars + 1} 根", "passed": False}]
 
     # ── KD 黃金交叉 ──
     kd_ok = False
-    kd_detail = "資料不足"
+    kd_summary = "資料不足"
+    kd_metrics: list[dict] = []
+
     if len(df_up) >= 2:
         k = df_up["K"]
         d = df_up["D"]
@@ -180,27 +217,58 @@ def diagnose_strategy_d(
         kd_ok = bool(window_cross.any())
         k_val = float(k.iloc[-1])
         d_val = float(d.iloc[-1])
+        cross_anywhere = ((k.shift(1) < d.shift(1)) & (k > d)).iloc[-(kd_window + 1):].any()
+
+        kd_metrics.append({
+            "name": f"近 {kd_window} 根有 KD 交叉",
+            "actual": "是" if cross_anywhere else "否",
+            "target": "是",
+            "passed": bool(cross_anywhere),
+        })
+        kd_metrics.append({
+            "name": "K 值（需低於閾值）",
+            "actual": k_val,
+            "target": float(kd_k_threshold),
+            "unit": "",
+            "comparison": "<",
+            "passed": k_val < kd_k_threshold,
+            "progress": min(kd_k_threshold / max(k_val, 0.01), 1.0),
+        })
+        kd_metrics.append({
+            "name": "D 值（參考）",
+            "actual": d_val,
+            "target": "—",
+            "unit": "",
+        })
+
         if kd_ok:
-            kd_detail = (
+            kd_summary = (
                 f"K={k_val:.1f}, D={d_val:.1f}｜"
                 f"最近 {kd_window} 根內有黃金交叉且 K < {kd_k_threshold}"
             )
         else:
-            cross_anywhere = ((k.shift(1) < d.shift(1)) & (k > d)).iloc[-(kd_window + 1):].any()
             if not cross_anywhere:
                 reason = f"最近 {kd_window} 根內無 KD 交叉"
             elif k_val >= kd_k_threshold:
                 reason = f"K={k_val:.1f} ≥ 閾值 {kd_k_threshold}"
             else:
                 reason = f"交叉時 K ≥ 閾值 {kd_k_threshold}"
-            kd_detail = f"K={k_val:.1f}, D={d_val:.1f}｜{reason}"
+            kd_summary = f"K={k_val:.1f}, D={d_val:.1f}｜{reason}"
+    else:
+        kd_metrics = [{"name": "資料量", "actual": f"{len(df_up)} 根", "target": "≥ 2 根", "passed": False}]
 
     return [
-        {"condition": "MACD 直方圖收斂", "passed": macd_ok, "detail": macd_detail},
+        {
+            "condition": "MACD 直方圖收斂",
+            "passed": macd_ok,
+            "metrics": macd_metrics,
+            "summary": macd_summary,
+        },
         {
             "condition": f"KD 黃金交叉（回看 {kd_window} 根，K 閾值 {kd_k_threshold}）",
             "passed": kd_ok,
-            "detail": kd_detail,
+            "metrics": kd_metrics,
+            "summary": kd_summary,
         },
     ]
 

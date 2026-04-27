@@ -49,10 +49,13 @@ def render_sidebar(user_id: str) -> dict:
     ).strip().upper()
 
     # ── Time period ──
+    _avail_periods = defaults["ui"]["available_periods"]
+    _saved_period = prefs.get("default_period", "6M")
+    _period_idx = _avail_periods.index(_saved_period) if _saved_period in _avail_periods else _avail_periods.index("6M")
     period = st.sidebar.radio(
-        "時間區間",
-        options=defaults["ui"]["available_periods"],
-        index=defaults["ui"]["available_periods"].index(prefs.get("default_period", "6M")),
+        "快速縮放",
+        options=_avail_periods,
+        index=_period_idx,
         horizontal=True,
     )
 
@@ -62,7 +65,7 @@ def render_sidebar(user_id: str) -> dict:
     sd = defaults["strategy_d"]
     with st.sidebar.expander("Strategy D 參數", expanded=False):
         kd_window = st.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
-        n_bars     = st.slider("MACD 收斂根數", 2, 7,  prefs.get("n_bars",    sd["n_bars"]))
+        n_bars     = st.slider("MACD 收斂根數", 1, 7,  prefs.get("n_bars",    sd["n_bars"]))
         recovery   = st.slider("回彈比例 (%)", 0.3, 0.9,
                                float(prefs.get("recovery_pct", sd["recovery_pct"])), step=0.05)
         kd_thresh  = st.slider("KD 閾值", 10, 35, prefs.get("kd_k_threshold", sd["kd_k_threshold"]))
@@ -75,17 +78,19 @@ def render_sidebar(user_id: str) -> dict:
     show_bias = st.sidebar.checkbox("乖離率", value=prefs.get("show_bias", True))
     show_news = st.sidebar.checkbox("新聞情緒", value=prefs.get("show_news", True))
 
-    bias_period = st.sidebar.select_slider(
+    bias_period = st.sidebar.slider(
         "乖離率週期",
-        options=defaults["bias"]["available_periods"],
-        value=prefs.get("bias_period", defaults["bias"]["period"]),
+        min_value=int(defaults["bias"]["min_period"]),
+        max_value=int(defaults["bias"]["max_period"]),
+        value=int(prefs.get("bias_period", defaults["bias"]["period"])),
+        step=1,
     ) if show_bias else defaults["bias"]["period"]
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**MA 均線**")
     ma_periods = st.sidebar.multiselect(
         "顯示均線",
-        options=[5, 10, 20, 60],
+        options=[5, 10, 20, 60, 120],
         default=prefs.get("ma_periods", [5, 20, 60]),
     )
 

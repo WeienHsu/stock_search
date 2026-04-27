@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # must run before any import that reads os.getenv at module level
+
 import streamlit as st
 
 from src.core.current_user import current_user, current_user_is_admin

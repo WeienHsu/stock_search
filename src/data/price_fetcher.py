@@ -4,12 +4,12 @@ import yfinance as yf
 from src.repositories.price_cache_repo import get_price_cache, save_price_cache
 
 _PERIOD_MAP = {
-    "1D": "1d",
-    "5D": "5d",
     "1M": "1mo",
     "3M": "3mo",
     "6M": "6mo",
     "1Y": "1y",
+    "3Y": "3y",
+    "5Y": "5y",
 }
 
 
@@ -22,15 +22,16 @@ def fetch_prices(ticker: str, period: str = "6M") -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def fetch_prices_for_strategy(ticker: str, years: int = 1) -> pd.DataFrame:
-    cached = get_price_cache(ticker)
+def fetch_prices_for_strategy(ticker: str, years: int = 5) -> pd.DataFrame:
+    cache_key = f"{ticker}_{years}y"
+    cached = get_price_cache(cache_key)
     if cached is not None and not cached.empty:
         return cached
     try:
         raw = yf.download(ticker, period=f"{years}y", auto_adjust=True, progress=False)
         df = _normalize_df(raw)
         if not df.empty:
-            save_price_cache(ticker, df)
+            save_price_cache(cache_key, df)
         return df
     except Exception:
         return pd.DataFrame()
