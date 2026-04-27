@@ -112,6 +112,99 @@ def scan_strategy_d(
     return df[signal][cols].reset_index(drop=True)
 
 
+def diagnose_strategy_d(
+    df: pd.DataFrame,
+    date: str,
+    params: dict[str, Any],
+) -> list[dict] | None:
+    """Per-condition pass/fail analysis for a specific date.
+
+    Returns None if the date is not found in df.
+    Each entry: {"condition": str, "passed": bool, "detail": str}
+    """
+    required = {"K", "D", "histogram"}
+    if not required.issubset(df.columns):
+        return None
+
+    date_str = str(date)[:10]
+    date_mask = df["date"].astype(str).str[:10] == date_str
+    if not date_mask.any():
+        return None
+
+    idx = int(df[date_mask].index[-1])
+    df_up = df.iloc[: idx + 1]
+
+    n_bars = int(params.get("n_bars", 3))
+    recovery_pct = float(params.get("recovery_pct", 0.7))
+    kd_window = int(params.get("kd_window", 10))
+    kd_k_threshold = int(params.get("kd_k_threshold", 20))
+
+    # ── MACD 直方圖收斂 ──
+    macd_ok = False
+    macd_detail = "資料不足"
+    if len(df_up) >= n_bars + 1:
+        hist = df_up["histogram"]
+        recent = hist.iloc[-n_bars:]
+        all_neg = not recent.isna().any() and (recent < 0).all()
+        if all_neg:
+            converging = all(recent.iloc[j] > recent.iloc[j - 1] for j in range(1, n_bars))
+            lookback = hist.iloc[-20:] if len(hist) >= 20 else hist
+            neg_vals = lookback[lookback < 0]
+            if converging and not neg_vals.empty:
+                trough = float(neg_vals.min())
+                threshold = abs(trough) * (1 - recovery_pct)
+                current = abs(float(recent.iloc[-1]))
+                macd_ok = current < threshold
+                actual_recovery = 1 - current / abs(trough) if trough != 0 else 0
+                macd_detail = (
+                    f"最近 {n_bars} 根：{', '.join(f'{v:.4f}' for v in recent.tolist())}｜"
+                    f"谷底 {trough:.4f}｜恢復比例 {actual_recovery:.1%}（需 ≥ {recovery_pct:.0%}）"
+                )
+            elif not converging:
+                macd_detail = f"最近 {n_bars} 根直方圖未持續收斂（未嚴格遞增）"
+            else:
+                macd_detail = "近期無負值直方圖可計算谷底"
+        elif recent.isna().any():
+            macd_detail = "含 NaN，MACD 指標可能尚未暖機"
+        else:
+            macd_detail = f"最近 {n_bars} 根直方圖含非負值（需全部為負值）"
+
+    # ── KD 黃金交叉 ──
+    kd_ok = False
+    kd_detail = "資料不足"
+    if len(df_up) >= 2:
+        k = df_up["K"]
+        d = df_up["D"]
+        kd_cross_signal = (k.shift(1) < d.shift(1)) & (k > d) & (k < kd_k_threshold)
+        window_cross = kd_cross_signal.iloc[-(kd_window + 1):]
+        kd_ok = bool(window_cross.any())
+        k_val = float(k.iloc[-1])
+        d_val = float(d.iloc[-1])
+        if kd_ok:
+            kd_detail = (
+                f"K={k_val:.1f}, D={d_val:.1f}｜"
+                f"最近 {kd_window} 根內有黃金交叉且 K < {kd_k_threshold}"
+            )
+        else:
+            cross_anywhere = ((k.shift(1) < d.shift(1)) & (k > d)).iloc[-(kd_window + 1):].any()
+            if not cross_anywhere:
+                reason = f"最近 {kd_window} 根內無 KD 交叉"
+            elif k_val >= kd_k_threshold:
+                reason = f"K={k_val:.1f} ≥ 閾值 {kd_k_threshold}"
+            else:
+                reason = f"交叉時 K ≥ 閾值 {kd_k_threshold}"
+            kd_detail = f"K={k_val:.1f}, D={d_val:.1f}｜{reason}"
+
+    return [
+        {"condition": "MACD 直方圖收斂", "passed": macd_ok, "detail": macd_detail},
+        {
+            "condition": f"KD 黃金交叉（回看 {kd_window} 根，K 閾值 {kd_k_threshold}）",
+            "passed": kd_ok,
+            "detail": kd_detail,
+        },
+    ]
+
+
 def prepare_df(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
     """Add all indicators needed for Strategy D."""
     df = add_macd(df,

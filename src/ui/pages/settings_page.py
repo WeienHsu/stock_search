@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import streamlit as st
 
 import finnhub
@@ -7,6 +10,13 @@ from src.data.ticker_utils import normalize_ticker
 from src.repositories.preferences_repo import get_preferences, save_preferences
 from src.repositories.user_secrets_repo import clear_secret, get_secret, has_secret, set_secret
 from src.repositories.watchlist_repo import add_ticker, get_watchlist, remove_ticker
+
+_SETTINGS_PATH = Path(__file__).parents[3] / "config" / "default_settings.json"
+
+
+def _load_defaults() -> dict:
+    with open(_SETTINGS_PATH, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def render(user_id: str) -> None:
@@ -39,14 +49,54 @@ def render(user_id: str) -> None:
     st.markdown("---")
     st.markdown("### 偏好設定")
     prefs = get_preferences(user_id)
+    defaults = _load_defaults()
 
-    default_period = st.selectbox("預設時間區間", ["1D","5D","1M","6M","1Y"],
-                                  index=["1D","5D","1M","6M","1Y"].index(prefs.get("default_period","6M")))
+    periods = defaults["ui"]["available_periods"]
+    default_period = st.selectbox(
+        "預設時間區間", periods,
+        index=periods.index(prefs.get("default_period", "6M")),
+    )
 
     if st.button("儲存偏好"):
         prefs["default_period"] = default_period
         save_preferences(user_id, prefs)
         st.success("已儲存")
+
+    # ── Strategy D default params ──
+    st.markdown("---")
+    st.markdown("### Strategy D 參數預設值")
+    st.caption("設定後，側邊欄的參數滑桿將以此作為預設值。")
+
+    sd = defaults["strategy_d"]
+    col1, col2 = st.columns(2)
+    with col1:
+        kd_window_new = st.slider(
+            "KD 回看視窗", 5, 20, int(prefs.get("kd_window", sd["kd_window"])),
+            key="settings_kd_window",
+        )
+        n_bars_new = st.slider(
+            "MACD 收斂根數", 2, 7, int(prefs.get("n_bars", sd["n_bars"])),
+            key="settings_n_bars",
+        )
+    with col2:
+        recovery_new = st.slider(
+            "回彈比例", 0.3, 0.9, float(prefs.get("recovery_pct", sd["recovery_pct"])),
+            step=0.05, key="settings_recovery",
+        )
+        kd_thresh_new = st.slider(
+            "KD 閾值", 10, 35, int(prefs.get("kd_k_threshold", sd["kd_k_threshold"])),
+            key="settings_kd_thresh",
+        )
+
+    if st.button("儲存 Strategy D 參數"):
+        prefs.update({
+            "kd_window": kd_window_new,
+            "n_bars": n_bars_new,
+            "recovery_pct": recovery_new,
+            "kd_k_threshold": kd_thresh_new,
+        })
+        save_preferences(user_id, prefs)
+        st.success("已儲存 Strategy D 參數，側邊欄下次展開時將使用新預設值")
 
     # ── Finnhub API Key ──
     st.markdown("---")

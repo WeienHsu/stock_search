@@ -27,7 +27,7 @@
   "ui": {
     "default_ticker": "2330.TW",
     "default_period": "6M",
-    "available_periods": ["1D", "5D", "1M", "6M", "1Y"]
+    "available_periods": ["1D", "5D", "1M", "3M", "6M", "1Y"]
   },
   "watchlist_defaults": [
     {"ticker": "2330.TW", "name": "台積電"},

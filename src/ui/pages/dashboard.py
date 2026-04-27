@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 
 from src.core.finnhub_mode import MissingFinnhubKey
@@ -10,7 +11,7 @@ from src.indicators.bias import add_bias
 from src.indicators.kd import add_kd
 from src.indicators.ma import add_ma
 from src.indicators.macd import add_macd
-from src.strategies.strategy_d import scan_strategy_d, prepare_df
+from src.strategies.strategy_d import scan_strategy_d, prepare_df, diagnose_strategy_d
 from src.ui.charts.kline_chart import build_combined_chart
 from src.ui.components.news_card import render_news_section
 from src.ui.components.signal_lights import render_signal_badge
@@ -30,7 +31,7 @@ def render(cfg: dict, user_id: str) -> None:
 
     # ── Fetch data ──
     with st.spinner(f"載入 {ticker} 資料…"):
-        df_display = fetch_prices(ticker, period=cfg["period"])
+        df_display  = fetch_prices(ticker, period=cfg["period"])
         df_strategy = fetch_prices_for_strategy(ticker, years=1)
 
     if df_display.empty:
@@ -38,7 +39,6 @@ def render(cfg: dict, user_id: str) -> None:
         return
 
     # ── Compute indicators on full 1Y data to avoid short-period row shortage ──
-    # df_strategy has 1Y of data (enough for MACD/KD warmup), then we trim for display.
     sd_params = cfg["strategy_d"]
     failed_indicators: list[str] = []
 
@@ -65,13 +65,13 @@ def render(cfg: dict, user_id: str) -> None:
     except ValueError:
         failed_indicators.append("Bias")
 
-    # Trim to display period for charting (keeps indicator-computed columns)
-    cutoff = df_display["date"].iloc[0]
-    df_chart = df_strategy[df_strategy["date"] >= cutoff].copy()
+    # Initial x-axis range = start of selected period (scrollbar reveals earlier history)
+    x_range_start: str | None = df_display["date"].iloc[0] if not df_display.empty else None
 
-    # ── Strategy D signals (full 1Y history; prepare_df safely recomputes MACD/KD) ──
+    # ── Strategy D signals (full 1Y) ──
     signal_dates: list[str] = []
     today_signal = False
+    df_s: pd.DataFrame | None = None
     try:
         df_s = prepare_df(df_strategy, sd_params)
         sig_df = scan_strategy_d(
@@ -91,22 +91,51 @@ def render(cfg: dict, user_id: str) -> None:
     render_signal_badge(today_signal)
     st.markdown("")
 
-    # Warn if any indicators still couldn't be computed (very new stocks < 35 days)
     if failed_indicators:
         st.warning(f"⚠️ 資料不足，以下技術指標無法計算：{', '.join(failed_indicators)}")
 
-    # ── Combined chart (shared X-axis — 拖曳縮放時各面板同步) ──
+    # ── Combined chart: full 1Y data with rangeslider; initial view = selected period ──
     fig = build_combined_chart(
-        df_chart, ticker,
+        df_strategy, ticker,
         ma_periods=cfg["ma_periods"],
         signal_dates=signal_dates,
         bias_period=cfg["bias_period"],
-        show_macd=cfg["show_macd"] and "histogram" in df_chart.columns,
-        show_kd=cfg["show_kd"] and "K" in df_chart.columns,
+        show_macd=cfg["show_macd"] and "histogram" in df_strategy.columns,
+        show_kd=cfg["show_kd"] and "K" in df_strategy.columns,
         show_bias=cfg["show_bias"],
+        x_range_start=x_range_start,
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.caption("提示：拖曳 X 軸可縮放，各面板會同步移動")
+    st.caption("提示：使用底部滾動條可查看更早歷史；拖曳 X 軸可縮放，各面板同步移動")
+
+    # ── Strategy condition diagnosis ──
+    st.markdown("---")
+    with st.expander("🔍 策略條件診斷", expanded=False):
+        if df_s is None:
+            st.warning("策略指標計算失敗，無法執行診斷。")
+        else:
+            col_d, col_s = st.columns([1, 1])
+            with col_d:
+                latest_date = pd.Timestamp(df_strategy["date"].iloc[-1]).date()
+                diag_date = st.date_input("選擇日期", value=latest_date, key="diag_date")
+            with col_s:
+                st.selectbox("策略", ["Strategy D"], key="diag_strategy")
+
+            if st.button("診斷", key="btn_diagnose"):
+                date_str = str(diag_date)
+                conditions = diagnose_strategy_d(df_s, date_str, sd_params)
+                if conditions is None:
+                    st.warning(f"日期 {date_str} 不在資料範圍內（僅有最近 1 年資料）")
+                else:
+                    all_pass = all(c["passed"] for c in conditions)
+                    if all_pass:
+                        st.success(f"✅ 所有條件均通過 — {date_str} 有 Strategy D 訊號")
+                    else:
+                        st.error(f"❌ 部分條件未通過 — {date_str} 無 Strategy D 訊號")
+                    for c in conditions:
+                        icon = "✅" if c["passed"] else "❌"
+                        st.markdown(f"{icon} **{c['condition']}**")
+                        st.caption(c["detail"])
 
     # ── News & sentiment ──
     if cfg["show_news"]:

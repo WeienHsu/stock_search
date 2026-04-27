@@ -5,6 +5,9 @@ import streamlit as st
 
 _SETTINGS_PATH = Path(__file__).parents[2] / "config" / "default_settings.json"
 
+_THEME_OPTIONS = {"Morandi 暖色": "morandi", "Dark 深色": "dark"}
+_THEME_LABELS  = {v: k for k, v in _THEME_OPTIONS.items()}
+
 
 def _load_defaults() -> dict:
     with open(_SETTINGS_PATH, encoding="utf-8") as f:
@@ -12,16 +15,31 @@ def _load_defaults() -> dict:
 
 
 def render_sidebar(user_id: str) -> dict:
-    """
-    Render sidebar controls and return a config dict with all user selections.
-    Reads saved preferences on load; sidebar changes are in-session only.
-    """
-    from src.repositories.preferences_repo import get_preferences
+    """Render sidebar and return a config dict with all user selections."""
+    from src.repositories.preferences_repo import get_preferences, save_preferences
 
     defaults = _load_defaults()
     prefs = get_preferences(user_id)
 
     st.sidebar.title("Stock Intelligence")
+
+    # ── Theme selector ──
+    saved_theme = prefs.get("theme", "morandi")
+    current_label = _THEME_LABELS.get(saved_theme, "Morandi 暖色")
+    selected_label = st.sidebar.selectbox(
+        "色系",
+        options=list(_THEME_OPTIONS.keys()),
+        index=list(_THEME_OPTIONS.keys()).index(current_label),
+    )
+    selected_theme = _THEME_OPTIONS[selected_label]
+
+    # Apply theme to session_state; rerun once if theme changed so CSS refreshes
+    if st.session_state.get("theme") != selected_theme:
+        st.session_state["theme"] = selected_theme
+        prefs["theme"] = selected_theme
+        save_preferences(user_id, prefs)
+        st.rerun()
+
     st.sidebar.markdown("---")
 
     # ── Ticker input ──
@@ -39,13 +57,15 @@ def render_sidebar(user_id: str) -> dict:
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("**Strategy D 參數**")
 
+    # ── Strategy D params (collapsible) ──
     sd = defaults["strategy_d"]
-    kd_window = st.sidebar.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
-    n_bars     = st.sidebar.slider("MACD 收斂根數", 2, 7,  prefs.get("n_bars",    sd["n_bars"]))
-    recovery   = st.sidebar.slider("回彈比例 (%)",  0.3, 0.9, float(prefs.get("recovery_pct", sd["recovery_pct"])), step=0.05)
-    kd_thresh  = st.sidebar.slider("KD 閾值",       10, 35,  prefs.get("kd_k_threshold", sd["kd_k_threshold"]))
+    with st.sidebar.expander("Strategy D 參數", expanded=False):
+        kd_window = st.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
+        n_bars     = st.slider("MACD 收斂根數", 2, 7,  prefs.get("n_bars",    sd["n_bars"]))
+        recovery   = st.slider("回彈比例 (%)", 0.3, 0.9,
+                               float(prefs.get("recovery_pct", sd["recovery_pct"])), step=0.05)
+        kd_thresh  = st.slider("KD 閾值", 10, 35, prefs.get("kd_k_threshold", sd["kd_k_threshold"]))
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**指標顯示**")

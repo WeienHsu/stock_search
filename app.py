@@ -13,6 +13,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Init theme from saved prefs before CSS injection (avoids one-rerun delay) ──
+if "theme" not in st.session_state and "user_id" in st.session_state:
+    from src.repositories.preferences_repo import get_preferences as _get_prefs
+    _prefs = _get_prefs(st.session_state["user_id"])
+    st.session_state["theme"] = _prefs.get("theme", "morandi")
+
 apply_theme()
 
 # ── Auth gate ──

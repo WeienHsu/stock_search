@@ -13,6 +13,11 @@ _DEFAULTS: dict[str, Any] = {
     "bias_period": 20,
     "ma_periods": [5, 20, 60],
     "default_period": "6M",
+    "theme": "morandi",
+    "kd_window": 10,
+    "n_bars": 3,
+    "recovery_pct": 0.7,
+    "kd_k_threshold": 20,
 }
 
 
