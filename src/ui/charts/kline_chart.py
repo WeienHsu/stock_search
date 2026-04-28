@@ -140,9 +140,18 @@ def build_combined_chart(
     show_bias: bool,
     x_range_start: str | None = None,
     period: str = "",
+    sell_dates: list[str] | None = None,
+    show_rangeslider: bool = True,
 ) -> go.Figure:
-    """Single subplot figure with shared x-axis. Arrows at top, vertical dashed lines on signals."""
+    """Combined subplot figure with shared x-axis.
+
+    When show_rangeslider=False the data is assumed to be pre-sliced to the
+    selected period, so the Y-axis auto-fits naturally (no rangeslider needed).
+    When show_rangeslider=True the full 5Y dataset is expected and the bottom
+    rangeslider lets the user navigate the full history.
+    """
     P = _get_palette()
+    sell_dates = sell_dates or []
 
     panels: list[str] = ["main"]
     if show_macd and "histogram" in df.columns:
@@ -190,56 +199,66 @@ def build_combined_chart(
                 fig.add_trace(trace, row=row_idx, col=1)
             fig.add_hline(y=0, line_color=P.BORDER, line_width=1, row=row_idx, col=1)
 
-    # ── Signal arrows at top of main panel + vertical dashed lines across all panels ──
-    if signal_dates and not df.empty:
-        date_set = set(df["date"].astype(str))
-        sig_in_data = [d for d in signal_dates if str(d)[:10] in date_set]
-        for sig_date in sig_in_data:
-            # Arrow at the very top of main panel (y domain = normalized 0-1 for row 1)
+    date_set = set(df["date"].astype(str)) if not df.empty else set()
+
+    # ── Buy signal: ▼ at top, coral-orange vertical lines ──
+    if signal_dates:
+        for sig_date in signal_dates:
+            if str(sig_date)[:10] not in date_set:
+                continue
             fig.add_annotation(
-                x=sig_date,
-                y=1.0,
-                xref="x",
-                yref="y domain",
-                yanchor="top",
-                text="▼",
-                showarrow=False,
+                x=sig_date, y=1.0,
+                xref="x", yref="y domain",
+                yanchor="top", text="▼", showarrow=False,
                 font=dict(color=P.GOLD, size=16, family="sans-serif"),
             )
-            # Dotted vertical line from top to bottom across all panels
             fig.add_vline(
-                x=sig_date,
-                line_dash="dot",
-                line_color=P.GOLD,
-                line_width=1.5,
-                opacity=0.6,
+                x=sig_date, line_dash="dot",
+                line_color=P.GOLD, line_width=1.5, opacity=0.6,
+            )
+
+    # ── Sell signal: ▲ at bottom, steel-blue vertical lines ──
+    sell_color = getattr(P, "SIGNAL_SELL", "#5B7FA8")
+    if sell_dates:
+        for sell_date in sell_dates:
+            if str(sell_date)[:10] not in date_set:
+                continue
+            fig.add_annotation(
+                x=sell_date, y=0.0,
+                xref="x", yref="y domain",
+                yanchor="bottom", text="▲", showarrow=False,
+                font=dict(color=sell_color, size=16, family="sans-serif"),
+            )
+            fig.add_vline(
+                x=sell_date, line_dash="dot",
+                line_color=sell_color, line_width=1.5, opacity=0.6,
             )
 
     _apply_layout(fig)
     fig.update_layout(
         height=300 + 200 * (n_rows - 1),
         showlegend=True,
-        uirevision=f"{ticker}_{period}",  # preserve user zoom/drag unless ticker or period changes
+        uirevision=f"{ticker}_{period}",
     )
 
-    # Rangeslider + initial x-axis range
     rangebreaks = _build_rangebreaks(df)
-    if x_range_start and not df.empty:
+    if show_rangeslider and not df.empty:
+        # Full-history mode: show rangeslider, set initial view via x_range_start
         end_date = df["date"].iloc[-1]
-        fig.update_layout(
-            xaxis=dict(
-                range=[x_range_start, end_date],
-                rangeslider=dict(
-                    visible=True,
-                    thickness=0.04,
-                    bgcolor=P.SURFACE,
-                    bordercolor=P.BORDER,
-                    borderwidth=1,
-                ),
-                rangebreaks=rangebreaks,
-            )
+        fig.update_xaxes(
+            rangeslider=dict(
+                visible=True,
+                thickness=0.04,
+                bgcolor=P.SURFACE,
+                bordercolor=P.BORDER,
+                borderwidth=1,
+            ),
+            rangebreaks=rangebreaks,
         )
+        if x_range_start:
+            fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
     else:
+        # Auto-Y mode: data is pre-sliced, let Plotly auto-range both axes
         fig.update_xaxes(rangeslider_visible=False, rangebreaks=rangebreaks)
 
     return fig

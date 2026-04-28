@@ -64,11 +64,25 @@ def render_sidebar(user_id: str) -> dict:
     # ── Strategy D params (collapsible) ──
     sd = defaults["strategy_d"]
     with st.sidebar.expander("Strategy D 參數", expanded=False):
-        kd_window = st.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
+        kd_window  = st.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
         n_bars     = st.slider("MACD 收斂根數", 1, 7,  prefs.get("n_bars",    sd["n_bars"]))
         recovery   = st.slider("回彈比例 (%)", 0.3, 0.9,
                                float(prefs.get("recovery_pct", sd["recovery_pct"])), step=0.05)
-        kd_thresh  = st.slider("KD 閾值", 10, 35, prefs.get("kd_k_threshold", sd["kd_k_threshold"]))
+        kd_thresh  = st.slider("買進 KD 閾值（低檔）", 10, 35,
+                               prefs.get("kd_k_threshold", sd["kd_k_threshold"]))
+        enable_sell = st.checkbox("啟用賣出訊號", value=prefs.get("enable_sell_signal", sd.get("enable_sell_signal", True)))
+        kd_d_thresh = st.slider("賣出 KD 閾值（高檔）", 65, 95,
+                                prefs.get("kd_d_threshold", sd.get("kd_d_threshold", 80)),
+                                disabled=not enable_sell)
+
+    st.sidebar.markdown("---")
+
+    # ── Y-axis auto-scale ──
+    auto_y_scale = st.sidebar.checkbox(
+        "Y 軸跟隨可視範圍",
+        value=prefs.get("auto_y_scale", True),
+        help="勾選：圖表依選定期間裁切，Y 軸自動貼合價格範圍。\n取消：顯示完整 5 年資料 + 底部時間滑桿，Y 軸保持全範圍刻度。",
+    )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**指標顯示**")
@@ -97,11 +111,14 @@ def render_sidebar(user_id: str) -> dict:
     return {
         "ticker": ticker,
         "period": period,
+        "auto_y_scale": auto_y_scale,
         "strategy_d": {
             "kd_window": kd_window,
             "n_bars": n_bars,
             "recovery_pct": recovery,
             "kd_k_threshold": kd_thresh,
+            "kd_d_threshold": kd_d_thresh,
+            "enable_sell_signal": enable_sell,
             **{k: sd[k] for k in ("macd_fast", "macd_slow", "macd_signal", "kd_k", "kd_d", "kd_smooth_k")},
         },
         "show_macd": show_macd,

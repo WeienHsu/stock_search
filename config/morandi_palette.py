@@ -11,7 +11,8 @@ BLUE   = "#7A9EB5"   # MACD line
 ORANGE = "#C8956C"   # Signal line
 PURPLE = "#9B8BB4"   # KD K
 BROWN  = "#A89070"   # KD D
-GOLD   = "#D4440C"   # Strategy D 訊號標記（高對比珊瑚橙，易於辨識）
+GOLD        = "#D4440C"   # Strategy D 買進訊號標記（高對比珊瑚橙紅）
+SIGNAL_SELL = "#5B7FA8"   # Strategy D 賣出訊號標記（深湛藍，與買進冷暖對比）
 
 MA_COLORS = {
     5:   "#B5A898",

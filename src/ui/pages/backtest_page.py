@@ -29,28 +29,39 @@ def render(cfg: dict, user_id: str) -> None:
                 "專業量化研究常用 20 / 60 / 120 / 250 日作為觀察節點。"
             ),
         )
-    run_btn = col3.button("執行回測", use_container_width=True)
+
+    signal_type = col3.radio(
+        "訊號類型",
+        options=["buy", "sell"],
+        format_func=lambda x: "📈 買進" if x == "buy" else "📉 賣出",
+        key="bt_signal_type",
+    )
+    run_btn = st.button("執行回測", use_container_width=False)
 
     if not run_btn:
         st.info("設定參數後點擊「執行回測」")
         return
 
     ticker = normalize_ticker(ticker)
-    with st.spinner(f"回測 {ticker} 中…"):
-        bt_df = run_backtest(ticker, cfg["strategy_d"], forward_days=forward_days, years=1)
+    label = "買進" if signal_type == "buy" else "賣出"
+    with st.spinner(f"回測 {ticker} {label}訊號中…"):
+        bt_df = run_backtest(ticker, cfg["strategy_d"],
+                             forward_days=forward_days, years=1,
+                             signal_type=signal_type)
 
     if bt_df.empty:
-        st.warning(f"**{ticker}** 在過去 1 年內未找到 Strategy D 訊號，無法回測。")
+        st.warning(f"**{ticker}** 在過去 1 年內未找到 Strategy D {label}訊號，無法回測。")
         return
 
     metrics = compute_metrics(bt_df, forward_days=forward_days)
 
     # ── Metrics cards ──
-    st.markdown("### 績效摘要")
+    st.markdown(f"### 績效摘要（{label}訊號）")
+    win_label = "勝率" if signal_type == "buy" else "空頭勝率"
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("訊號次數", metrics["count"])
-    c2.metric("勝率", f"{metrics['win_rate']:.1f}%")
-    c3.metric("總報酬", f"{metrics['total_return_pct']:+.1f}%")
+    c2.metric(win_label, f"{metrics['win_rate']:.1f}%")
+    c3.metric("累積報酬", f"{metrics['total_return_pct']:+.1f}%")
     c4.metric("平均報酬", f"{metrics['mean_return_pct']:+.1f}%")
     c5.metric("MDD", f"{metrics['max_drawdown_pct']:.1f}%")
     c6.metric("Sharpe", f"{metrics['sharpe']:.2f}")

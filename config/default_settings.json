@@ -9,6 +9,8 @@
     "n_bars": 3,
     "recovery_pct": 0.7,
     "kd_k_threshold": 20,
+    "kd_d_threshold": 80,
+    "enable_sell_signal": true,
     "macd_fast": 12,
     "macd_slow": 26,
     "macd_signal": 9,
