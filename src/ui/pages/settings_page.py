@@ -77,8 +77,14 @@ def render(user_id: str) -> None:
             key="settings_kd_window",
         )
         n_bars_new = st.slider(
-            "MACD 收斂根數", 1, 7, int(prefs.get("n_bars", sd["n_bars"])),
+            "MACD 收斂根數", 3, 10, int(prefs.get("n_bars", sd["n_bars"])),
             key="settings_n_bars",
+        )
+        max_viol_new = st.slider(
+            "MACD 容忍違反根數", 0, 3,
+            int(prefs.get("max_violations", sd.get("max_violations", 1))),
+            key="settings_max_violations",
+            help="0 = 嚴格單調；1 = 容忍 1 根反向（預設）",
         )
     with col2:
         recovery_new = st.slider(
@@ -89,6 +95,11 @@ def render(user_id: str) -> None:
             "KD 閾值", 10, 35, int(prefs.get("kd_k_threshold", sd["kd_k_threshold"])),
             key="settings_kd_thresh",
         )
+        lookback_new = st.slider(
+            "MACD 峰谷回看根數", 10, 40,
+            int(prefs.get("lookback_bars", sd.get("lookback_bars", 20))),
+            key="settings_lookback_bars",
+        )
 
     if st.button("儲存 Strategy D 參數"):
         prefs.update({
@@ -96,6 +107,8 @@ def render(user_id: str) -> None:
             "n_bars": n_bars_new,
             "recovery_pct": recovery_new,
             "kd_k_threshold": kd_thresh_new,
+            "max_violations": max_viol_new,
+            "lookback_bars": lookback_new,
         })
         save_preferences(user_id, prefs)
         st.success("已儲存 Strategy D 參數，側邊欄下次展開時將使用新預設值")

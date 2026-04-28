@@ -7,10 +7,32 @@ from src.indicators.macd import add_macd
 from src.indicators.kd import add_kd
 
 
+def _count_violations(series: pd.Series, ascending: bool) -> int:
+    """Count bars that break the expected monotonic direction."""
+    count = 0
+    for i in range(1, len(series)):
+        if ascending:
+            if series.iloc[i] <= series.iloc[i - 1]:
+                count += 1
+        else:
+            if series.iloc[i] >= series.iloc[i - 1]:
+                count += 1
+    return count
+
+
 # ── Buy helpers ──────────────────────────────────────────────────────────────
 
-def _detect_macd_hist_converging(df: pd.DataFrame, n_bars: int, recovery_pct: float) -> bool:
-    """負值直方圖嚴格遞增並回彈至谷底的 (1-recovery_pct) 倍以內。"""
+def _detect_macd_hist_converging(
+    df: pd.DataFrame,
+    n_bars: int,
+    recovery_pct: float,
+    max_violations: int = 0,
+    lookback_bars: int = 20,
+) -> bool:
+    """負值直方圖整體遞增並回彈至谷底的 (1-recovery_pct) 倍以內。
+
+    max_violations=0 保留嚴格遞增的舊行為。
+    """
     if "histogram" not in df.columns:
         raise ValueError("Missing 'histogram' column. Call add_macd() first.")
     if len(df) < n_bars + 1:
@@ -24,11 +46,11 @@ def _detect_macd_hist_converging(df: pd.DataFrame, n_bars: int, recovery_pct: fl
     if (recent >= 0).any():
         return False
 
-    for i in range(1, len(recent)):
-        if recent.iloc[i] <= recent.iloc[i - 1]:
-            return False
+    if _count_violations(recent, ascending=True) > max_violations:
+        return False
 
-    lookback = df["histogram"].iloc[-20:] if len(df) >= 20 else df["histogram"]
+    lb = min(lookback_bars, len(df["histogram"]))
+    lookback = df["histogram"].iloc[-lb:]
     neg_vals = lookback[lookback < 0]
     if neg_vals.empty:
         return False
@@ -50,8 +72,17 @@ def _build_kd_prefilter_mask(df: pd.DataFrame, window: int, kd_k_threshold: int)
 
 # ── Sell helpers ─────────────────────────────────────────────────────────────
 
-def _detect_macd_hist_pos_converging(df: pd.DataFrame, n_bars: int, recovery_pct: float) -> bool:
-    """正值直方圖嚴格遞減並回落至峰值的 (1-recovery_pct) 倍以內。"""
+def _detect_macd_hist_pos_converging(
+    df: pd.DataFrame,
+    n_bars: int,
+    recovery_pct: float,
+    max_violations: int = 0,
+    lookback_bars: int = 20,
+) -> bool:
+    """正值直方圖整體遞減並回落至峰值的 (1-recovery_pct) 倍以內。
+
+    max_violations=0 保留嚴格遞減的舊行為。
+    """
     if "histogram" not in df.columns:
         raise ValueError("Missing 'histogram' column. Call add_macd() first.")
     if len(df) < n_bars + 1:
@@ -65,11 +96,11 @@ def _detect_macd_hist_pos_converging(df: pd.DataFrame, n_bars: int, recovery_pct
     if (recent <= 0).any():
         return False
 
-    for i in range(1, len(recent)):
-        if recent.iloc[i] >= recent.iloc[i - 1]:
-            return False
+    if _count_violations(recent, ascending=False) > max_violations:
+        return False
 
-    lookback = df["histogram"].iloc[-20:] if len(df) >= 20 else df["histogram"]
+    lb = min(lookback_bars, len(df["histogram"]))
+    lookback = df["histogram"].iloc[-lb:]
     pos_vals = lookback[lookback > 0]
     if pos_vals.empty:
         return False
@@ -94,16 +125,21 @@ def _build_kd_death_cross_mask(df: pd.DataFrame, window: int, kd_d_threshold: in
 def detect_strategy_d(
     df: pd.DataFrame,
     kd_window: int = 10,
-    n_bars: int = 3,
+    n_bars: int = 5,
     recovery_pct: float = 0.7,
     kd_k_threshold: int = 20,
+    max_violations: int = 0,
+    lookback_bars: int = 20,
 ) -> bool:
     """Return True if Strategy D buy signal fires on the latest bar."""
     required = {"K", "D", "histogram"}
     if not required.issubset(df.columns):
         raise ValueError("Missing required columns. Call add_macd() and add_kd() first.")
 
-    if not _detect_macd_hist_converging(df, n_bars=n_bars, recovery_pct=recovery_pct):
+    if not _detect_macd_hist_converging(
+        df, n_bars=n_bars, recovery_pct=recovery_pct,
+        max_violations=max_violations, lookback_bars=lookback_bars,
+    ):
         return False
 
     window_df = df.iloc[-(kd_window + 1):]
@@ -116,9 +152,11 @@ def detect_strategy_d(
 def scan_strategy_d(
     df: pd.DataFrame,
     kd_window: int = 10,
-    n_bars: int = 3,
+    n_bars: int = 5,
     recovery_pct: float = 0.7,
     kd_k_threshold: int = 20,
+    max_violations: int = 0,
+    lookback_bars: int = 20,
 ) -> pd.DataFrame:
     """Scan entire history, return DataFrame of all buy signal dates."""
     required = {"K", "D", "histogram"}
@@ -134,10 +172,9 @@ def scan_strategy_d(
             continue
         if (recent >= 0).any():
             continue
-        converging = all(recent.iloc[j] > recent.iloc[j - 1] for j in range(1, len(recent)))
-        if not converging:
+        if _count_violations(recent, ascending=True) > max_violations:
             continue
-        lb_start = max(0, i - 19)
+        lb_start = max(0, i - (lookback_bars - 1))
         lookback = hist.iloc[lb_start: i + 1]
         neg_vals = lookback[lookback < 0]
         if neg_vals.empty:
@@ -164,16 +201,21 @@ def scan_strategy_d(
 def detect_strategy_d_sell(
     df: pd.DataFrame,
     kd_window: int = 10,
-    n_bars: int = 3,
+    n_bars: int = 5,
     recovery_pct: float = 0.7,
     kd_d_threshold: int = 80,
+    max_violations: int = 0,
+    lookback_bars: int = 20,
 ) -> bool:
     """Return True if Strategy D sell signal fires on the latest bar."""
     required = {"K", "D", "histogram"}
     if not required.issubset(df.columns):
         raise ValueError("Missing required columns. Call add_macd() and add_kd() first.")
 
-    if not _detect_macd_hist_pos_converging(df, n_bars=n_bars, recovery_pct=recovery_pct):
+    if not _detect_macd_hist_pos_converging(
+        df, n_bars=n_bars, recovery_pct=recovery_pct,
+        max_violations=max_violations, lookback_bars=lookback_bars,
+    ):
         return False
 
     window_df = df.iloc[-(kd_window + 1):]
@@ -186,9 +228,11 @@ def detect_strategy_d_sell(
 def scan_strategy_d_sell(
     df: pd.DataFrame,
     kd_window: int = 10,
-    n_bars: int = 3,
+    n_bars: int = 5,
     recovery_pct: float = 0.7,
     kd_d_threshold: int = 80,
+    max_violations: int = 0,
+    lookback_bars: int = 20,
 ) -> pd.DataFrame:
     """Scan entire history, return DataFrame of all sell signal dates."""
     required = {"K", "D", "histogram"}
@@ -204,10 +248,9 @@ def scan_strategy_d_sell(
             continue
         if (recent <= 0).any():
             continue
-        converging = all(recent.iloc[j] < recent.iloc[j - 1] for j in range(1, len(recent)))
-        if not converging:
+        if _count_violations(recent, ascending=False) > max_violations:
             continue
-        lb_start = max(0, i - 19)
+        lb_start = max(0, i - (lookback_bars - 1))
         lookback = hist.iloc[lb_start: i + 1]
         pos_vals = lookback[lookback > 0]
         if pos_vals.empty:
@@ -247,10 +290,12 @@ def diagnose_strategy_d(
     idx = int(df[date_mask].index[-1])
     df_up = df.iloc[: idx + 1]
 
-    n_bars = int(params.get("n_bars", 3))
+    n_bars = int(params.get("n_bars", 5))
     recovery_pct = float(params.get("recovery_pct", 0.7))
     kd_window = int(params.get("kd_window", 10))
     kd_k_threshold = int(params.get("kd_k_threshold", 20))
+    max_violations = int(params.get("max_violations", 0))
+    lookback_bars = int(params.get("lookback_bars", 20))
 
     # ── MACD 直方圖收斂（負值往上） ──
     macd_ok = False
@@ -261,13 +306,15 @@ def diagnose_strategy_d(
         hist = df_up["histogram"]
         recent = hist.iloc[-n_bars:]
         has_nan = recent.isna().any()
-        all_neg = not has_nan and (recent < 0).all()
-        converging = all(recent.iloc[j] > recent.iloc[j - 1] for j in range(1, n_bars)) if n_bars > 1 else True
 
         if has_nan:
             macd_summary = "含 NaN，MACD 指標可能尚未暖機"
             macd_metrics = [{"name": "近期直方圖", "actual": "含 NaN", "target": "無 NaN", "passed": False}]
         else:
+            all_neg = (recent < 0).all()
+            actual_violations = _count_violations(recent, ascending=True)
+            shape_ok = actual_violations <= max_violations
+
             macd_metrics.append({
                 "name": f"最近 {n_bars} 根全為負值（綠 BAR）",
                 "actual": "是" if all_neg else "否（含正值）",
@@ -275,21 +322,23 @@ def diagnose_strategy_d(
                 "passed": all_neg,
             })
             macd_metrics.append({
-                "name": "嚴格遞增收斂（往零軸縮減）",
-                "actual": "是" if converging else "否",
-                "target": "是",
-                "passed": converging,
+                "name": f"形狀遞增（違反 ≤ {max_violations} 根）",
+                "actual": f"{actual_violations} 根違反",
+                "target": f"≤ {max_violations} 根",
+                "passed": shape_ok,
             })
 
-            lookback = hist.iloc[-20:] if len(hist) >= 20 else hist
+            lb = min(lookback_bars, len(hist))
+            lookback = hist.iloc[-lb:]
             neg_vals = lookback[lookback < 0]
 
-            if all_neg and converging and not neg_vals.empty:
+            if all_neg and not neg_vals.empty:
                 trough = float(neg_vals.min())
                 current = abs(float(recent.iloc[-1]))
                 threshold = abs(trough) * (1 - recovery_pct)
                 actual_recovery = 1.0 - current / abs(trough) if trough != 0 else 0.0
-                macd_ok = current < threshold
+                recovery_passed = current < threshold
+                macd_ok = all_neg and shape_ok and recovery_passed
                 progress = max(0.0, min(actual_recovery / recovery_pct, 1.0)) if recovery_pct > 0 else 0.0
                 macd_metrics.append({
                     "name": "MACD 回彈比例",
@@ -297,19 +346,19 @@ def diagnose_strategy_d(
                     "target": recovery_pct,
                     "unit": "%",
                     "comparison": "≥",
-                    "passed": macd_ok,
+                    "passed": recovery_passed,
                     "progress": progress,
                 })
                 macd_summary = (
                     f"最近 {n_bars} 根：{', '.join(f'{v:.4f}' for v in recent.tolist())}｜"
-                    f"谷底 {trough:.4f}｜恢復比例 {actual_recovery:.1%}（需 ≥ {recovery_pct:.0%}）"
+                    f"谷底 {trough:.4f}（回看 {lookback_bars} 根）｜"
+                    f"恢復比例 {actual_recovery:.1%}（需 ≥ {recovery_pct:.0%}）｜"
+                    f"違反 {actual_violations}/{max_violations} 根"
                 )
             elif not all_neg:
                 macd_summary = f"最近 {n_bars} 根直方圖含非負值（需全部為負值）"
-            elif not converging:
-                macd_summary = f"最近 {n_bars} 根直方圖未持續收斂（未嚴格遞增）"
             else:
-                macd_summary = "近期無負值直方圖可計算谷底"
+                macd_summary = f"近期 {lookback_bars} 根無負值直方圖可計算谷底"
     else:
         macd_metrics = [{"name": "資料量", "actual": f"{len(df_up)} 根", "target": f"≥ {n_bars + 1} 根", "passed": False}]
 
@@ -400,10 +449,12 @@ def diagnose_strategy_d_sell(
     idx = int(df[date_mask].index[-1])
     df_up = df.iloc[: idx + 1]
 
-    n_bars = int(params.get("n_bars", 3))
+    n_bars = int(params.get("n_bars", 5))
     recovery_pct = float(params.get("recovery_pct", 0.7))
     kd_window = int(params.get("kd_window", 10))
     kd_d_threshold = int(params.get("kd_d_threshold", 80))
+    max_violations = int(params.get("max_violations", 0))
+    lookback_bars = int(params.get("lookback_bars", 20))
 
     # ── MACD 直方圖收斂（正值往下） ──
     macd_ok = False
@@ -414,13 +465,15 @@ def diagnose_strategy_d_sell(
         hist = df_up["histogram"]
         recent = hist.iloc[-n_bars:]
         has_nan = recent.isna().any()
-        all_pos = not has_nan and (recent > 0).all()
-        converging = all(recent.iloc[j] < recent.iloc[j - 1] for j in range(1, n_bars)) if n_bars > 1 else True
 
         if has_nan:
             macd_summary = "含 NaN，MACD 指標可能尚未暖機"
             macd_metrics = [{"name": "近期直方圖", "actual": "含 NaN", "target": "無 NaN", "passed": False}]
         else:
+            all_pos = (recent > 0).all()
+            actual_violations = _count_violations(recent, ascending=False)
+            shape_ok = actual_violations <= max_violations
+
             macd_metrics.append({
                 "name": f"最近 {n_bars} 根全為正值（紅 BAR）",
                 "actual": "是" if all_pos else "否（含負值）",
@@ -428,21 +481,23 @@ def diagnose_strategy_d_sell(
                 "passed": all_pos,
             })
             macd_metrics.append({
-                "name": "嚴格遞減收斂（往零軸縮減）",
-                "actual": "是" if converging else "否",
-                "target": "是",
-                "passed": converging,
+                "name": f"形狀遞減（違反 ≤ {max_violations} 根）",
+                "actual": f"{actual_violations} 根違反",
+                "target": f"≤ {max_violations} 根",
+                "passed": shape_ok,
             })
 
-            lookback = hist.iloc[-20:] if len(hist) >= 20 else hist
+            lb = min(lookback_bars, len(hist))
+            lookback = hist.iloc[-lb:]
             pos_vals = lookback[lookback > 0]
 
-            if all_pos and converging and not pos_vals.empty:
+            if all_pos and not pos_vals.empty:
                 peak = float(pos_vals.max())
                 current = float(recent.iloc[-1])
                 threshold = peak * (1 - recovery_pct)
                 actual_recovery = 1.0 - current / peak if peak != 0 else 0.0
-                macd_ok = current < threshold
+                recovery_passed = current < threshold
+                macd_ok = all_pos and shape_ok and recovery_passed
                 progress = max(0.0, min(actual_recovery / recovery_pct, 1.0)) if recovery_pct > 0 else 0.0
                 macd_metrics.append({
                     "name": "MACD 回落比例",
@@ -450,19 +505,19 @@ def diagnose_strategy_d_sell(
                     "target": recovery_pct,
                     "unit": "%",
                     "comparison": "≥",
-                    "passed": macd_ok,
+                    "passed": recovery_passed,
                     "progress": progress,
                 })
                 macd_summary = (
                     f"最近 {n_bars} 根：{', '.join(f'{v:.4f}' for v in recent.tolist())}｜"
-                    f"峰值 {peak:.4f}｜回落比例 {actual_recovery:.1%}（需 ≥ {recovery_pct:.0%}）"
+                    f"峰值 {peak:.4f}（回看 {lookback_bars} 根）｜"
+                    f"回落比例 {actual_recovery:.1%}（需 ≥ {recovery_pct:.0%}）｜"
+                    f"違反 {actual_violations}/{max_violations} 根"
                 )
             elif not all_pos:
                 macd_summary = f"最近 {n_bars} 根直方圖含非正值（需全部為正值）"
-            elif not converging:
-                macd_summary = f"最近 {n_bars} 根直方圖未持續收斂（未嚴格遞減）"
             else:
-                macd_summary = "近期無正值直方圖可計算峰值"
+                macd_summary = f"近期 {lookback_bars} 根無正值直方圖可計算峰值"
     else:
         macd_metrics = [{"name": "資料量", "actual": f"{len(df_up)} 根", "target": f"≥ {n_bars + 1} 根", "passed": False}]
 
@@ -558,6 +613,8 @@ class StrategyD(StrategyBase):
             "recovery_pct": 0.7,
             "kd_k_threshold": 20,
             "kd_d_threshold": 80,
+            "max_violations": 0,
+            "lookback_bars": 20,
             "enable_sell_signal": True,
             "macd_fast": 12,
             "macd_slow": 26,
@@ -579,6 +636,8 @@ class StrategyD(StrategyBase):
             n_bars=p["n_bars"],
             recovery_pct=p["recovery_pct"],
             kd_k_threshold=p["kd_k_threshold"],
+            max_violations=p["max_violations"],
+            lookback_bars=p["lookback_bars"],
         )
         for _, row in buy_df.iterrows():
             signals.append(Signal(
@@ -595,6 +654,8 @@ class StrategyD(StrategyBase):
                 n_bars=p["n_bars"],
                 recovery_pct=p["recovery_pct"],
                 kd_d_threshold=p["kd_d_threshold"],
+                max_violations=p["max_violations"],
+                lookback_bars=p["lookback_bars"],
             )
             for _, row in sell_df.iterrows():
                 signals.append(Signal(

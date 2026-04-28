@@ -65,7 +65,10 @@ def render_sidebar(user_id: str) -> dict:
     sd = defaults["strategy_d"]
     with st.sidebar.expander("Strategy D 參數", expanded=False):
         kd_window  = st.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
-        n_bars     = st.slider("MACD 收斂根數", 1, 7,  prefs.get("n_bars",    sd["n_bars"]))
+        n_bars     = st.slider("MACD 收斂根數", 3, 10, prefs.get("n_bars", sd["n_bars"]))
+        max_viol   = st.slider("MACD 容忍違反根數", 0, 3, prefs.get("max_violations", sd.get("max_violations", 1)),
+                               help="0 = 嚴格單調；1 = 容忍 1 根反向（預設）")
+        lookback   = st.slider("MACD 峰谷回看根數", 10, 40, prefs.get("lookback_bars", sd.get("lookback_bars", 20)))
         recovery   = st.slider("回彈比例 (%)", 0.3, 0.9,
                                float(prefs.get("recovery_pct", sd["recovery_pct"])), step=0.05)
         kd_thresh  = st.slider("買進 KD 閾值（低檔）", 10, 35,
@@ -118,6 +121,8 @@ def render_sidebar(user_id: str) -> dict:
             "recovery_pct": recovery,
             "kd_k_threshold": kd_thresh,
             "kd_d_threshold": kd_d_thresh,
+            "max_violations": max_viol,
+            "lookback_bars": lookback,
             "enable_sell_signal": enable_sell,
             **{k: sd[k] for k in ("macd_fast", "macd_slow", "macd_signal", "kd_k", "kd_d", "kd_smooth_k")},
         },
