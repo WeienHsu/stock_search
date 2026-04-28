@@ -6,7 +6,7 @@ from src.data.price_fetcher import fetch_prices_for_strategy
 from src.data.ticker_utils import normalize_ticker
 from src.indicators.macd import add_macd
 from src.indicators.kd import add_kd
-from src.strategies.strategy_d import scan_strategy_d
+from src.strategies.strategy_d import scan_strategy_d, scan_strategy_d_sell
 
 
 def run_backtest(
@@ -14,12 +14,15 @@ def run_backtest(
     strategy_params: dict,
     forward_days: int = 60,
     years: int = 1,
+    signal_type: str = "buy",
 ) -> pd.DataFrame:
     """
-    Scan all Strategy D signals in the past `years` and compute forward returns.
+    Scan all Strategy D buy or sell signals in the past `years` and compute
+    forward returns (buy) or forward declines (sell).
 
     Returns DataFrame with columns:
-        date, signal_close, forward_close, forward_return_pct, win
+        date, signal_close, forward_date, forward_close, forward_return_pct, win
+    For sell signals "win" means price fell (forward_return_pct < 0).
     """
     ticker = normalize_ticker(ticker)
     df = fetch_prices_for_strategy(ticker, years=years)
@@ -30,13 +33,22 @@ def run_backtest(
     df = add_macd(df, fast=p.get("macd_fast", 12), slow=p.get("macd_slow", 26), signal=p.get("macd_signal", 9))
     df = add_kd(df, k=p.get("kd_k", 9), d=p.get("kd_d", 3), smooth_k=p.get("kd_smooth_k", 3))
 
-    sig_df = scan_strategy_d(
-        df,
-        kd_window=p.get("kd_window", 10),
-        n_bars=p.get("n_bars", 3),
-        recovery_pct=p.get("recovery_pct", 0.7),
-        kd_k_threshold=p.get("kd_k_threshold", 20),
-    )
+    if signal_type == "sell":
+        sig_df = scan_strategy_d_sell(
+            df,
+            kd_window=p.get("kd_window", 10),
+            n_bars=p.get("n_bars", 3),
+            recovery_pct=p.get("recovery_pct", 0.7),
+            kd_d_threshold=p.get("kd_d_threshold", 80),
+        )
+    else:
+        sig_df = scan_strategy_d(
+            df,
+            kd_window=p.get("kd_window", 10),
+            n_bars=p.get("n_bars", 3),
+            recovery_pct=p.get("recovery_pct", 0.7),
+            kd_k_threshold=p.get("kd_k_threshold", 20),
+        )
 
     if sig_df.empty:
         return pd.DataFrame()
@@ -49,7 +61,6 @@ def run_backtest(
         sig_date = str(row["date"])[:10]
         sig_close = float(row["close"])
 
-        # Find the close price ~forward_days trading days later
         try:
             sig_idx = all_dates.index(sig_date)
         except ValueError:
@@ -66,7 +77,8 @@ def run_backtest(
             "signal_close": round(sig_close, 4),
             "forward_close": round(fwd_close, 4),
             "forward_return_pct": round(fwd_return, 2),
-            "win": fwd_return > 0,
+            # buy: win = price rose; sell: win = price fell
+            "win": (fwd_return < 0) if signal_type == "sell" else (fwd_return > 0),
         })
 
     return pd.DataFrame(rows)

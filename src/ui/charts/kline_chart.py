@@ -5,6 +5,24 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
+def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
+    """Return Plotly rangebreaks that skip weekends and market holidays."""
+    if df.empty or "date" not in df.columns:
+        return []
+    try:
+        dates = pd.to_datetime(df["date"].astype(str).str[:10])
+        min_d, max_d = dates.min(), dates.max()
+        all_weekdays = pd.date_range(min_d, max_d, freq="B")  # business days Mon-Fri
+        trading_set = set(dates.dt.strftime("%Y-%m-%d"))
+        holidays = [d.strftime("%Y-%m-%d") for d in all_weekdays if d.strftime("%Y-%m-%d") not in trading_set]
+        breaks: list[dict] = [dict(bounds=["sat", "mon"])]
+        if holidays:
+            breaks.append(dict(values=holidays))
+        return breaks
+    except Exception:
+        return []
+
+
 def _get_palette():
     try:
         import streamlit as st
@@ -75,7 +93,7 @@ def _signal_traces_below(
         x=sig_df["date"],
         y=sig_df["low"] * 0.985,
         mode="markers",
-        marker=dict(symbol="triangle-up", size=12, color=P.GOLD),
+        marker=dict(symbol="triangle-up", size=15, color=P.GOLD, line=dict(color="#ffffff", width=1)),
         name="Strategy D",
     )]
 
@@ -121,9 +139,19 @@ def build_combined_chart(
     show_kd: bool,
     show_bias: bool,
     x_range_start: str | None = None,
+    period: str = "",
+    sell_dates: list[str] | None = None,
+    show_rangeslider: bool = True,
 ) -> go.Figure:
-    """Single subplot figure with shared x-axis. Arrows at top, vertical dashed lines on signals."""
+    """Combined subplot figure with shared x-axis.
+
+    When show_rangeslider=False the data is assumed to be pre-sliced to the
+    selected period, so the Y-axis auto-fits naturally (no rangeslider needed).
+    When show_rangeslider=True the full 5Y dataset is expected and the bottom
+    rangeslider lets the user navigate the full history.
+    """
     P = _get_palette()
+    sell_dates = sell_dates or []
 
     panels: list[str] = ["main"]
     if show_macd and "histogram" in df.columns:
@@ -171,51 +199,67 @@ def build_combined_chart(
                 fig.add_trace(trace, row=row_idx, col=1)
             fig.add_hline(y=0, line_color=P.BORDER, line_width=1, row=row_idx, col=1)
 
-    # ── Signal arrows at top of main panel + vertical dashed lines across all panels ──
-    if signal_dates and not df.empty:
-        date_set = set(df["date"].astype(str))
-        sig_in_data = [d for d in signal_dates if str(d)[:10] in date_set]
-        for sig_date in sig_in_data:
-            # Arrow at the very top of main panel (y domain = normalized 0-1 for row 1)
+    date_set = set(df["date"].astype(str)) if not df.empty else set()
+
+    # ── Buy signal: ▼ at top, coral-orange vertical lines ──
+    if signal_dates:
+        for sig_date in signal_dates:
+            if str(sig_date)[:10] not in date_set:
+                continue
             fig.add_annotation(
-                x=sig_date,
-                y=1.0,
-                xref="x",
-                yref="y domain",
-                yanchor="top",
-                text="▼",
-                showarrow=False,
-                font=dict(color=P.GOLD, size=13),
+                x=sig_date, y=1.0,
+                xref="x", yref="y domain",
+                yanchor="top", text="▼", showarrow=False,
+                font=dict(color=P.GOLD, size=16, family="sans-serif"),
             )
-            # Dotted vertical line from top to bottom across all panels
             fig.add_vline(
-                x=sig_date,
-                line_dash="dot",
-                line_color=P.GOLD,
-                line_width=1,
-                opacity=0.35,
+                x=sig_date, line_dash="dot",
+                line_color=P.GOLD, line_width=1.5, opacity=0.6,
+            )
+
+    # ── Sell signal: ▲ at bottom, steel-blue vertical lines ──
+    sell_color = getattr(P, "SIGNAL_SELL", "#5B7FA8")
+    if sell_dates:
+        for sell_date in sell_dates:
+            if str(sell_date)[:10] not in date_set:
+                continue
+            fig.add_annotation(
+                x=sell_date, y=0.0,
+                xref="x", yref="y domain",
+                yanchor="bottom", text="▲", showarrow=False,
+                font=dict(color=sell_color, size=16, family="sans-serif"),
+            )
+            fig.add_vline(
+                x=sell_date, line_dash="dot",
+                line_color=sell_color, line_width=1.5, opacity=0.6,
             )
 
     _apply_layout(fig)
-    fig.update_layout(height=300 + 200 * (n_rows - 1), showlegend=True)
+    fig.update_layout(
+        height=300 + 200 * (n_rows - 1),
+        showlegend=True,
+        uirevision=f"{ticker}_{period}",
+    )
 
-    # Rangeslider + initial x-axis range
-    if x_range_start and not df.empty:
+    rangebreaks = _build_rangebreaks(df)
+    if show_rangeslider and not df.empty:
+        # Full-history mode: show rangeslider, set initial view via x_range_start
         end_date = df["date"].iloc[-1]
-        fig.update_layout(
-            xaxis=dict(
-                range=[x_range_start, end_date],
-                rangeslider=dict(
-                    visible=True,
-                    thickness=0.04,
-                    bgcolor=P.SURFACE,
-                    bordercolor=P.BORDER,
-                    borderwidth=1,
-                ),
-            )
+        fig.update_xaxes(
+            rangeslider=dict(
+                visible=True,
+                thickness=0.04,
+                bgcolor=P.SURFACE,
+                bordercolor=P.BORDER,
+                borderwidth=1,
+            ),
+            rangebreaks=rangebreaks,
         )
+        if x_range_start:
+            fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
     else:
-        fig.update_xaxes(rangeslider_visible=False)
+        # Auto-Y mode: data is pre-sliced, let Plotly auto-range both axes
+        fig.update_xaxes(rangeslider_visible=False, rangebreaks=rangebreaks)
 
     return fig
 
@@ -235,7 +279,7 @@ def build_main_chart(
         for trace in _signal_traces_below(df, signal_dates):
             fig.add_trace(trace)
     _apply_layout(fig, title=f"{ticker} — K 線圖")
-    fig.update_xaxes(rangeslider_visible=False)
+    fig.update_xaxes(rangeslider_visible=False, rangebreaks=_build_rangebreaks(df))
     return fig
 
 

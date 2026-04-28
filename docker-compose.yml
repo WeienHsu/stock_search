@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    image: stock-intelligence:latest
+    container_name: stock_intelligence
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      # ── Persistent data volumes ──
+      # User data (watchlist, settings, preferences) → never lost on restart
+      - stock_user_data:/app/data/users
+      # Price cache (pickle files + .meta TTL markers)
+      - stock_price_cache:/app/data/cache/prices
+      # News cache (JSON files)
+      - stock_news_cache:/app/data/cache/news
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  stock_user_data:
+    driver: local
+  stock_price_cache:
+    driver: local
+  stock_news_cache:
+    driver: local

@@ -2,13 +2,15 @@
   "data": {
     "price_cache_ttl_hours": 6,
     "news_cache_ttl_hours": 1,
-    "price_history_years": 1
+    "price_history_years": 5
   },
   "strategy_d": {
     "kd_window": 10,
     "n_bars": 3,
     "recovery_pct": 0.7,
     "kd_k_threshold": 20,
+    "kd_d_threshold": 80,
+    "enable_sell_signal": true,
     "macd_fast": 12,
     "macd_slow": 26,
     "macd_signal": 9,
@@ -18,7 +20,8 @@
   },
   "bias": {
     "period": 20,
-    "available_periods": [10, 20, 60]
+    "min_period": 5,
+    "max_period": 120
   },
   "news": {
     "days_lookback": 14,
@@ -27,13 +30,28 @@
   "ui": {
     "default_ticker": "2330.TW",
     "default_period": "6M",
-    "available_periods": ["1D", "5D", "1M", "3M", "6M", "1Y"]
+    "available_periods": ["1M", "3M", "6M", "1Y", "3Y", "5Y"]
   },
   "watchlist_defaults": [
-    {"ticker": "2330.TW", "name": "台積電"},
-    {"ticker": "2317.TW", "name": "鴻海"},
-    {"ticker": "TSLA",    "name": "Tesla"},
-    {"ticker": "NVDA",    "name": "NVIDIA"},
-    {"ticker": "PLTR",    "name": "Palantir"}
+    {"ticker": "GLD",       "name": "SPDR 黃金 ETF"},
+    {"ticker": "SOXX",      "name": "iShares 半導體 ETF"},
+    {"ticker": "VOO",       "name": "Vanguard S&P 500"},
+    {"ticker": "MU",        "name": "Micron Technology"},
+    {"ticker": "NVDA",      "name": "NVIDIA"},
+    {"ticker": "PLTR",      "name": "Palantir"},
+    {"ticker": "ITA",       "name": "iShares 航太國防 ETF"},
+    {"ticker": "TSLA",      "name": "Tesla"},
+    {"ticker": "META",      "name": "Meta Platforms"},
+    {"ticker": "MSFT",      "name": "Microsoft"},
+    {"ticker": "GOOGL",     "name": "Alphabet"},
+    {"ticker": "2330.TW",   "name": "台積電"},
+    {"ticker": "2317.TW",   "name": "鴻海"},
+    {"ticker": "3037.TW",   "name": "欣興電子"},
+    {"ticker": "2382.TW",   "name": "廣達電腦"},
+    {"ticker": "0050.TW",   "name": "元大台灣50"},
+    {"ticker": "00922.TW",  "name": "國泰台灣ESG永續高股息"},
+    {"ticker": "00981A.TW", "name": "中信台灣科技優選正2"},
+    {"ticker": "00980A.TW", "name": "中信AI晶片正2"},
+    {"ticker": "6757.TW",   "name": "致茂電子"}
   ]
 }

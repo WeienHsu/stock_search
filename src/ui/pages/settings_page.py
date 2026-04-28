@@ -52,9 +52,11 @@ def render(user_id: str) -> None:
     defaults = _load_defaults()
 
     periods = defaults["ui"]["available_periods"]
+    _saved_default = prefs.get("default_period", "6M")
+    _default_idx = periods.index(_saved_default) if _saved_default in periods else periods.index("6M")
     default_period = st.selectbox(
-        "預設時間區間", periods,
-        index=periods.index(prefs.get("default_period", "6M")),
+        "預設快速縮放", periods,
+        index=_default_idx,
     )
 
     if st.button("儲存偏好"):
@@ -75,7 +77,7 @@ def render(user_id: str) -> None:
             key="settings_kd_window",
         )
         n_bars_new = st.slider(
-            "MACD 收斂根數", 2, 7, int(prefs.get("n_bars", sd["n_bars"])),
+            "MACD 收斂根數", 1, 7, int(prefs.get("n_bars", sd["n_bars"])),
             key="settings_n_bars",
         )
     with col2:
