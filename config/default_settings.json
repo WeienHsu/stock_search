@@ -2,7 +2,7 @@
   "data": {
     "price_cache_ttl_hours": 6,
     "news_cache_ttl_hours": 1,
-    "price_history_years": 5
+    "price_history_years": 10
   },
   "strategy_d": {
     "kd_window": 10,

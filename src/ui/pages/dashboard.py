@@ -34,17 +34,24 @@ def render(cfg: dict, user_id: str) -> None:
         st.info("請在左側輸入股票代號")
         return
 
-    st.markdown(f"## {ticker}")
+    col_title, col_reset = st.columns([9, 1])
+    with col_title:
+        st.markdown(f"## {ticker}")
+    with col_reset:
+        st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
+        if st.button("↩ 重置", key="btn_reset_chart", help="重置縮放至選定期間"):
+            st.session_state["chart_nonce"] = st.session_state.get("chart_nonce", 0) + 1
+            st.rerun()
 
-    # ── Fetch full 5Y data (always, for indicator warm-up) ──
+    # ── Fetch full 10Y data (always, for indicator warm-up and pan history) ──
     with st.spinner(f"載入 {ticker} 資料…"):
-        df_full = fetch_prices_for_strategy(ticker, years=5)
+        df_full = fetch_prices_for_strategy(ticker, years=10)
 
     if df_full.empty:
         st.error(f"無法取得 **{ticker}** 的價格資料，請確認代號是否正確。")
         return
 
-    # ── Compute indicators on full 5Y to avoid short-period row shortage ──
+    # ── Compute indicators on full 10Y to avoid short-period row shortage ──
     sd_params = cfg["strategy_d"]
     failed_indicators: list[str] = []
 
@@ -111,28 +118,16 @@ def render(cfg: dict, user_id: str) -> None:
     if failed_indicators:
         st.warning(f"⚠️ 資料不足，以下技術指標無法計算：{', '.join(failed_indicators)}")
 
-    # ── Chart data: slice to period if auto_y_scale=True, else use full 5Y ──
-    auto_y = cfg.get("auto_y_scale", True)
+    # ── Chart window: always show full history; set initial X view to selected period ──
     period = cfg["period"]
     cutoff_days = _PERIOD_DAYS.get(period, 183)
     cutoff_date = (datetime.now() - timedelta(days=cutoff_days)).strftime("%Y-%m-%d")
-
-    if auto_y:
-        df_chart = df_full[df_full["date"] >= cutoff_date].copy()
-        # Filter signals to visible range
-        chart_buy_dates = [d for d in buy_dates if d >= cutoff_date]
-        chart_sell_dates = [d for d in sell_dates if d >= cutoff_date]
-        show_rangeslider = False
-        x_range_start = None
-    else:
-        df_chart = df_full
-        chart_buy_dates = buy_dates
-        chart_sell_dates = sell_dates
-        show_rangeslider = True
-        _visible = df_full[df_full["date"] >= cutoff_date]
-        x_range_start = (
-            _visible["date"].iloc[0] if not _visible.empty else df_full["date"].iloc[0]
-        )
+    _visible = df_full[df_full["date"] >= cutoff_date]
+    x_range_start = _visible["date"].iloc[0] if not _visible.empty else df_full["date"].iloc[0]
+    df_chart = df_full
+    chart_buy_dates = buy_dates
+    chart_sell_dates = sell_dates
+    nonce = st.session_state.get("chart_nonce", 0)
 
     fig = build_combined_chart(
         df_chart, ticker,
@@ -145,17 +140,18 @@ def render(cfg: dict, user_id: str) -> None:
         show_bias=cfg["show_bias"],
         x_range_start=x_range_start,
         period=period,
-        show_rangeslider=show_rangeslider,
+        uirevision=f"{ticker}_{period}_{nonce}",
     )
     st.plotly_chart(
         fig, use_container_width=True,
-        config={"displayModeBar": False},
-        key=f"main_chart_{ticker}_{period}_{auto_y}",
+        config={
+            "displayModeBar": True,
+            "displaylogo": False,
+            "modeBarButtonsToRemove": ["lasso2d", "select2d", "autoScale2d", "toImage"],
+        },
+        key=f"main_chart_{ticker}",
     )
-    if show_rangeslider:
-        st.caption("提示：使用底部滾動條可查看更早歷史；拖曳 X 軸可縮放，各面板同步移動")
-    else:
-        st.caption("提示：Y 軸已自動貼合選定期間價格範圍。左側取消「Y 軸跟隨可視範圍」可切換為全局刻度 + 時間滑桿")
+    st.caption("提示：框選可縮放 X 軸，Y 軸鎖定不跟隨。底部滑桿可查看更早歷史。點擊 ↩ 重置 或圖表右上角「Reset axes」可回到選定期間。")
 
     # ── Strategy condition diagnosis ──
     st.markdown("---")
@@ -178,7 +174,7 @@ def render(cfg: dict, user_id: str) -> None:
                     conditions = diagnose_strategy_d_sell(df_s, date_str, sd_params)
 
                 if conditions is None:
-                    st.warning(f"日期 {date_str} 不在資料範圍內（僅有最近 5 年資料）")
+                    st.warning(f"日期 {date_str} 不在資料範圍內（僅有最近 10 年資料）")
                 else:
                     all_pass = all(c["passed"] for c in conditions)
                     label = "買進" if diag_type == "買進" else "賣出"

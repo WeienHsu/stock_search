@@ -79,15 +79,6 @@ def render_sidebar(user_id: str) -> dict:
                                 disabled=not enable_sell)
 
     st.sidebar.markdown("---")
-
-    # ── Y-axis auto-scale ──
-    auto_y_scale = st.sidebar.checkbox(
-        "Y 軸跟隨可視範圍",
-        value=prefs.get("auto_y_scale", True),
-        help="勾選：圖表依選定期間裁切，Y 軸自動貼合價格範圍。\n取消：顯示完整 5 年資料 + 底部時間滑桿，Y 軸保持全範圍刻度。",
-    )
-
-    st.sidebar.markdown("---")
     st.sidebar.markdown("**指標顯示**")
 
     show_macd = st.sidebar.checkbox("MACD", value=prefs.get("show_macd", True))
@@ -114,7 +105,6 @@ def render_sidebar(user_id: str) -> dict:
     return {
         "ticker": ticker,
         "period": period,
-        "auto_y_scale": auto_y_scale,
         "strategy_d": {
             "kd_window": kd_window,
             "n_bars": n_bars,

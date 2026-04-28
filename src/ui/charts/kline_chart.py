@@ -5,6 +5,20 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
+def _price_y_range(df: pd.DataFrame, x_start: str | None) -> tuple[float, float] | None:
+    """Return a padded [y_min, y_max] from the visible initial window (low/high)."""
+    if df.empty:
+        return None
+    visible = df[df["date"] >= x_start] if x_start and "date" in df.columns else df
+    if visible.empty:
+        visible = df
+    if "low" not in visible.columns or "high" not in visible.columns:
+        return None
+    y_min, y_max = float(visible["low"].min()), float(visible["high"].max())
+    pad = (y_max - y_min) * 0.04
+    return y_min - pad, y_max + pad
+
+
 def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
     """Return Plotly rangebreaks that skip weekends and market holidays."""
     if df.empty or "date" not in df.columns:
@@ -141,14 +155,14 @@ def build_combined_chart(
     x_range_start: str | None = None,
     period: str = "",
     sell_dates: list[str] | None = None,
-    show_rangeslider: bool = True,
+    uirevision: str = "",
 ) -> go.Figure:
     """Combined subplot figure with shared x-axis.
 
-    When show_rangeslider=False the data is assumed to be pre-sliced to the
-    selected period, so the Y-axis auto-fits naturally (no rangeslider needed).
-    When show_rangeslider=True the full 5Y dataset is expected and the bottom
-    rangeslider lets the user navigate the full history.
+    Always renders full available history; initial view window is set via
+    x_range_start so the user can pan/scroll further left into past data.
+    Y-axis is locked to prevent accidental rescaling — it auto-fits to the
+    initial visible window and resets on double-click / Reset button.
     """
     P = _get_palette()
     sell_dates = sell_dates or []
@@ -162,9 +176,17 @@ def build_combined_chart(
         panels.append("bias")
 
     n_rows = len(panels)
-    main_h = 0.50
-    other_h = (1.0 - main_h) / max(n_rows - 1, 1) if n_rows > 1 else 1.0
-    row_heights = [main_h] + [other_h] * (n_rows - 1)
+    
+    # ── Define ideal pixel heights for each panel type ──
+    panel_heights_map = {
+        "main": 450,
+        "macd": 250,
+        "kd": 180,
+        "bias": 180,
+    }
+    raw_heights = [panel_heights_map[p] for p in panels]
+    total_height = sum(raw_heights) + 50  # +50 for top/bottom margins
+    row_heights = [h / sum(raw_heights) for h in raw_heights]
 
     panel_titles = {
         "main": f"{ticker} — K 線圖",
@@ -200,22 +222,28 @@ def build_combined_chart(
             fig.add_hline(y=0, line_color=P.BORDER, line_width=1, row=row_idx, col=1)
 
     date_set = set(df["date"].astype(str)) if not df.empty else set()
+    new_annotations = []
+    new_shapes = []
 
     # ── Buy signal: ▼ at top, coral-orange vertical lines ──
     if signal_dates:
         for sig_date in signal_dates:
             if str(sig_date)[:10] not in date_set:
                 continue
-            fig.add_annotation(
+            new_annotations.append(dict(
                 x=sig_date, y=1.0,
                 xref="x", yref="y domain",
                 yanchor="top", text="▼", showarrow=False,
                 font=dict(color=P.GOLD, size=16, family="sans-serif"),
-            )
-            fig.add_vline(
-                x=sig_date, line_dash="dot",
-                line_color=P.GOLD, line_width=1.5, opacity=0.6,
-            )
+            ))
+            new_shapes.append(dict(
+                type="line",
+                x0=sig_date, x1=sig_date,
+                y0=0, y1=1,
+                xref="x", yref="paper",
+                line=dict(color=P.GOLD, width=1.5, dash="dot"),
+                opacity=0.6,
+            ))
 
     # ── Sell signal: ▲ at bottom, steel-blue vertical lines ──
     sell_color = getattr(P, "SIGNAL_SELL", "#5B7FA8")
@@ -223,28 +251,52 @@ def build_combined_chart(
         for sell_date in sell_dates:
             if str(sell_date)[:10] not in date_set:
                 continue
-            fig.add_annotation(
+            new_annotations.append(dict(
                 x=sell_date, y=0.0,
                 xref="x", yref="y domain",
                 yanchor="bottom", text="▲", showarrow=False,
                 font=dict(color=sell_color, size=16, family="sans-serif"),
-            )
-            fig.add_vline(
-                x=sell_date, line_dash="dot",
-                line_color=sell_color, line_width=1.5, opacity=0.6,
-            )
+            ))
+            new_shapes.append(dict(
+                type="line",
+                x0=sell_date, x1=sell_date,
+                y0=0, y1=1,
+                xref="x", yref="paper",
+                line=dict(color=sell_color, width=1.5, dash="dot"),
+                opacity=0.6,
+            ))
+
+    if new_annotations or new_shapes:
+        fig.update_layout(
+            annotations=list(fig.layout.annotations) + new_annotations if fig.layout.annotations else new_annotations,
+            shapes=list(fig.layout.shapes) + new_shapes if fig.layout.shapes else new_shapes,
+        )
 
     _apply_layout(fig)
     fig.update_layout(
-        height=300 + 200 * (n_rows - 1),
+        height=total_height,
         showlegend=True,
-        uirevision=f"{ticker}_{period}",
+        uirevision=uirevision or f"{ticker}_{period}",
+        dragmode="zoom",
     )
 
+    # ── Y-axis: lock all panels so box-drag zooms X only ──
+    # Price panel: fit Y to the visible initial window; user resets via double-click.
+    price_y = _price_y_range(df, x_range_start)
+    price_row = panels.index("main") + 1
+    if price_y:
+        fig.update_yaxes(fixedrange=True, range=list(price_y), row=price_row, col=1)
+    else:
+        fig.update_yaxes(fixedrange=True, row=price_row, col=1)
+    # Sub-panels: lock Y so box-drag stays X-only (their ranges are already set above)
+    for i, panel in enumerate(panels, start=1):
+        if i != price_row:
+            fig.update_yaxes(fixedrange=True, row=i, col=1)
+
+    # ── X-axis: rangebreaks + single rangeslider on the bottom panel only ──
     rangebreaks = _build_rangebreaks(df)
-    if show_rangeslider and not df.empty:
-        # Full-history mode: show rangeslider, set initial view via x_range_start
-        end_date = df["date"].iloc[-1]
+    fig.update_xaxes(rangeslider_visible=False, rangebreaks=rangebreaks)
+    if not df.empty:
         fig.update_xaxes(
             rangeslider=dict(
                 visible=True,
@@ -253,13 +305,13 @@ def build_combined_chart(
                 bordercolor=P.BORDER,
                 borderwidth=1,
             ),
-            rangebreaks=rangebreaks,
+            row=n_rows, col=1,
         )
-        if x_range_start:
-            fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
-    else:
-        # Auto-Y mode: data is pre-sliced, let Plotly auto-range both axes
-        fig.update_xaxes(rangeslider_visible=False, rangebreaks=rangebreaks)
+
+    # ── Set initial X view to selected period window ──
+    if x_range_start and not df.empty:
+        end_date = df["date"].iloc[-1]
+        fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
 
     return fig
 
