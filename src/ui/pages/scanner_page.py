@@ -40,6 +40,8 @@ def render(cfg: dict, user_id: str) -> None:
 
         show_df = result_df[display_cols].copy()
         show_df.columns = col_names
-        st.dataframe(show_df, use_container_width=True, hide_index=True)
+        # Dynamic height: 36px per row + 38px header, min 300px, max fills viewport
+        table_height = max(300, min(36 * len(show_df) + 38, 900))
+        st.dataframe(show_df, use_container_width=True, hide_index=True, height=table_height)
     else:
         st.info("點擊「開始掃描」執行")

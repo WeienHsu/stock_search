@@ -5,6 +5,24 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
+def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
+    """Return Plotly rangebreaks that skip weekends and market holidays."""
+    if df.empty or "date" not in df.columns:
+        return []
+    try:
+        dates = pd.to_datetime(df["date"].astype(str).str[:10])
+        min_d, max_d = dates.min(), dates.max()
+        all_weekdays = pd.date_range(min_d, max_d, freq="B")  # business days Mon-Fri
+        trading_set = set(dates.dt.strftime("%Y-%m-%d"))
+        holidays = [d.strftime("%Y-%m-%d") for d in all_weekdays if d.strftime("%Y-%m-%d") not in trading_set]
+        breaks: list[dict] = [dict(bounds=["sat", "mon"])]
+        if holidays:
+            breaks.append(dict(values=holidays))
+        return breaks
+    except Exception:
+        return []
+
+
 def _get_palette():
     try:
         import streamlit as st
@@ -75,7 +93,7 @@ def _signal_traces_below(
         x=sig_df["date"],
         y=sig_df["low"] * 0.985,
         mode="markers",
-        marker=dict(symbol="triangle-up", size=12, color=P.GOLD),
+        marker=dict(symbol="triangle-up", size=15, color=P.GOLD, line=dict(color="#ffffff", width=1)),
         name="Strategy D",
     )]
 
@@ -186,15 +204,15 @@ def build_combined_chart(
                 yanchor="top",
                 text="▼",
                 showarrow=False,
-                font=dict(color=P.GOLD, size=13),
+                font=dict(color=P.GOLD, size=16, family="sans-serif"),
             )
             # Dotted vertical line from top to bottom across all panels
             fig.add_vline(
                 x=sig_date,
                 line_dash="dot",
                 line_color=P.GOLD,
-                line_width=1,
-                opacity=0.35,
+                line_width=1.5,
+                opacity=0.6,
             )
 
     _apply_layout(fig)
@@ -205,6 +223,7 @@ def build_combined_chart(
     )
 
     # Rangeslider + initial x-axis range
+    rangebreaks = _build_rangebreaks(df)
     if x_range_start and not df.empty:
         end_date = df["date"].iloc[-1]
         fig.update_layout(
@@ -217,10 +236,11 @@ def build_combined_chart(
                     bordercolor=P.BORDER,
                     borderwidth=1,
                 ),
+                rangebreaks=rangebreaks,
             )
         )
     else:
-        fig.update_xaxes(rangeslider_visible=False)
+        fig.update_xaxes(rangeslider_visible=False, rangebreaks=rangebreaks)
 
     return fig
 
@@ -240,7 +260,7 @@ def build_main_chart(
         for trace in _signal_traces_below(df, signal_dates):
             fig.add_trace(trace)
     _apply_layout(fig, title=f"{ticker} — K 線圖")
-    fig.update_xaxes(rangeslider_visible=False)
+    fig.update_xaxes(rangeslider_visible=False, rangebreaks=_build_rangebreaks(df))
     return fig
 
 

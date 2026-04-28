@@ -11,7 +11,7 @@ BLUE   = "#5B9BD5"
 ORANGE = "#E8A45A"
 PURPLE = "#A98ECC"
 BROWN  = "#C4A870"
-GOLD   = "#F0C060"
+GOLD   = "#FF6B35"   # Strategy D 訊號標記（亮橙色，深色背景下高對比）
 
 MA_COLORS = {
     5:   "#8A9AAA",

@@ -10,9 +10,25 @@ def render(cfg: dict, user_id: str) -> None:
     st.markdown("## 回測分析 — Strategy D")
     st.caption("以過去 1 年歷史資料計算所有訊號的前瞻報酬")
 
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col1, col2, col3 = st.columns([2, 2, 1])
     ticker = col1.text_input("股票代號", value=cfg.get("ticker", "2330.TW")).strip().upper()
-    forward_days = col2.selectbox("前瞻天數", [20, 40, 60, 120], index=2)
+
+    with col2:
+        forward_days = st.slider(
+            "前瞻天數（交易日）",
+            min_value=5,
+            max_value=500,
+            value=60,
+            step=5,
+            help=(
+                "訊號觸發後，持倉第 N 個**交易日**的報酬。\n\n"
+                "• 5–20 日：短線（1–4 週）\n"
+                "• 20–60 日：中線（1–3 個月）\n"
+                "• 60–250 日：波段（3–12 個月）\n"
+                "• 250+ 日：長線（1 年以上，~250 交易日 ≈ 1 年）\n\n"
+                "專業量化研究常用 20 / 60 / 120 / 250 日作為觀察節點。"
+            ),
+        )
     run_btn = col3.button("執行回測", use_container_width=True)
 
     if not run_btn:
