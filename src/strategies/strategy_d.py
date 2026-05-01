@@ -4,7 +4,7 @@ import pandas as pd
 from src.core.strategy_base import Signal, StrategyBase
 from src.core.strategy_registry import register
 from src.indicators.macd import add_macd
-from src.indicators.kd import add_kd
+from src.indicators.kd import add_kd, kd_golden_cross, kd_death_cross
 
 
 def _count_violations(series: pd.Series, ascending: bool) -> int:
@@ -20,13 +20,46 @@ def _count_violations(series: pd.Series, ascending: bool) -> int:
     return count
 
 
+def _param(params: dict[str, Any], side: str, key: str, default: Any) -> Any:
+    """Read side-specific Strategy D params with legacy flat-key fallback."""
+    side_params = params.get(side)
+    if isinstance(side_params, dict) and key in side_params:
+        return side_params[key]
+    side_key = f"{side}_{key}"
+    if side_key in params:
+        return params[side_key]
+    return params.get(key, default)
+
+
+def _buy_params(params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kd_window": int(_param(params, "buy", "kd_window", 3)),
+        "n_bars": int(_param(params, "buy", "n_bars", 3)),
+        "recovery_pct": float(_param(params, "buy", "recovery_pct", 0.6)),
+        "kd_k_threshold": int(_param(params, "buy", "kd_k_threshold", 22)),
+        "max_violations": int(_param(params, "buy", "max_violations", 1)),
+        "lookback_bars": int(_param(params, "buy", "lookback_bars", 20)),
+    }
+
+
+def _sell_params(params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kd_window": int(_param(params, "sell", "kd_window", 3)),
+        "n_bars": int(_param(params, "sell", "n_bars", 3)),
+        "recovery_pct": float(_param(params, "sell", "recovery_pct", 0.6)),
+        "kd_d_threshold": int(_param(params, "sell", "kd_d_threshold", 80)),
+        "max_violations": int(_param(params, "sell", "max_violations", 1)),
+        "lookback_bars": int(_param(params, "sell", "lookback_bars", 20)),
+    }
+
+
 # ── Buy helpers ──────────────────────────────────────────────────────────────
 
 def _detect_macd_hist_converging(
     df: pd.DataFrame,
     n_bars: int,
     recovery_pct: float,
-    max_violations: int = 0,
+    max_violations: int = 1,
     lookback_bars: int = 20,
 ) -> bool:
     """負值直方圖整體遞增並回彈至谷底的 (1-recovery_pct) 倍以內。
@@ -60,13 +93,11 @@ def _detect_macd_hist_converging(
 
 
 def _build_kd_prefilter_mask(df: pd.DataFrame, window: int, kd_k_threshold: int) -> pd.Series:
-    """K 上穿 D 且 K < 閾值（低檔黃金交叉）。"""
-    k = df["K"]
-    d = df["D"]
-    kd_signal = (k.shift(1) < d.shift(1)) & (k > d) & (k < kd_k_threshold)
+    """K 上穿 D 且 K < 閾值（低檔黃金交叉），支援 window 根回看容忍。"""
+    cross = kd_golden_cross(df, k_threshold=kd_k_threshold)
     mask = pd.Series(False, index=df.index)
     for offset in range(0, window + 1):
-        mask = mask | kd_signal.shift(offset).fillna(False)
+        mask = mask | cross.shift(offset).fillna(False)
     return mask
 
 
@@ -76,7 +107,7 @@ def _detect_macd_hist_pos_converging(
     df: pd.DataFrame,
     n_bars: int,
     recovery_pct: float,
-    max_violations: int = 0,
+    max_violations: int = 1,
     lookback_bars: int = 20,
 ) -> bool:
     """正值直方圖整體遞減並回落至峰值的 (1-recovery_pct) 倍以內。
@@ -110,13 +141,11 @@ def _detect_macd_hist_pos_converging(
 
 
 def _build_kd_death_cross_mask(df: pd.DataFrame, window: int, kd_d_threshold: int) -> pd.Series:
-    """K 下穿 D 且 K > 閾值（高檔死亡交叉）。"""
-    k = df["K"]
-    d = df["D"]
-    kd_signal = (k.shift(1) > d.shift(1)) & (k < d) & (k > kd_d_threshold)
+    """K 下穿 D 且 K > 閾值（高檔死亡交叉），支援 window 根回看容忍。"""
+    cross = kd_death_cross(df, d_threshold=kd_d_threshold)
     mask = pd.Series(False, index=df.index)
     for offset in range(0, window + 1):
-        mask = mask | kd_signal.shift(offset).fillna(False)
+        mask = mask | cross.shift(offset).fillna(False)
     return mask
 
 
@@ -124,11 +153,11 @@ def _build_kd_death_cross_mask(df: pd.DataFrame, window: int, kd_d_threshold: in
 
 def detect_strategy_d(
     df: pd.DataFrame,
-    kd_window: int = 10,
-    n_bars: int = 5,
-    recovery_pct: float = 0.7,
-    kd_k_threshold: int = 20,
-    max_violations: int = 0,
+    kd_window: int = 3,
+    n_bars: int = 3,
+    recovery_pct: float = 0.6,
+    kd_k_threshold: int = 22,
+    max_violations: int = 1,
     lookback_bars: int = 20,
 ) -> bool:
     """Return True if Strategy D buy signal fires on the latest bar."""
@@ -151,11 +180,11 @@ def detect_strategy_d(
 
 def scan_strategy_d(
     df: pd.DataFrame,
-    kd_window: int = 10,
-    n_bars: int = 5,
-    recovery_pct: float = 0.7,
-    kd_k_threshold: int = 20,
-    max_violations: int = 0,
+    kd_window: int = 3,
+    n_bars: int = 3,
+    recovery_pct: float = 0.6,
+    kd_k_threshold: int = 22,
+    max_violations: int = 1,
     lookback_bars: int = 20,
 ) -> pd.DataFrame:
     """Scan entire history, return DataFrame of all buy signal dates."""
@@ -200,11 +229,11 @@ def scan_strategy_d(
 
 def detect_strategy_d_sell(
     df: pd.DataFrame,
-    kd_window: int = 10,
-    n_bars: int = 5,
-    recovery_pct: float = 0.7,
+    kd_window: int = 3,
+    n_bars: int = 3,
+    recovery_pct: float = 0.6,
     kd_d_threshold: int = 80,
-    max_violations: int = 0,
+    max_violations: int = 1,
     lookback_bars: int = 20,
 ) -> bool:
     """Return True if Strategy D sell signal fires on the latest bar."""
@@ -227,11 +256,11 @@ def detect_strategy_d_sell(
 
 def scan_strategy_d_sell(
     df: pd.DataFrame,
-    kd_window: int = 10,
-    n_bars: int = 5,
-    recovery_pct: float = 0.7,
+    kd_window: int = 3,
+    n_bars: int = 3,
+    recovery_pct: float = 0.6,
     kd_d_threshold: int = 80,
-    max_violations: int = 0,
+    max_violations: int = 1,
     lookback_bars: int = 20,
 ) -> pd.DataFrame:
     """Scan entire history, return DataFrame of all sell signal dates."""
@@ -290,12 +319,13 @@ def diagnose_strategy_d(
     idx = int(df[date_mask].index[-1])
     df_up = df.iloc[: idx + 1]
 
-    n_bars = int(params.get("n_bars", 5))
-    recovery_pct = float(params.get("recovery_pct", 0.7))
-    kd_window = int(params.get("kd_window", 10))
-    kd_k_threshold = int(params.get("kd_k_threshold", 20))
-    max_violations = int(params.get("max_violations", 0))
-    lookback_bars = int(params.get("lookback_bars", 20))
+    bp = _buy_params(params)
+    n_bars = bp["n_bars"]
+    recovery_pct = bp["recovery_pct"]
+    kd_window = bp["kd_window"]
+    kd_k_threshold = bp["kd_k_threshold"]
+    max_violations = bp["max_violations"]
+    lookback_bars = bp["lookback_bars"]
 
     # ── MACD 直方圖收斂（負值往上） ──
     macd_ok = False
@@ -370,12 +400,24 @@ def diagnose_strategy_d(
     if len(df_up) >= 2:
         k = df_up["K"]
         d = df_up["D"]
-        kd_cross_signal = (k.shift(1) < d.shift(1)) & (k > d) & (k < kd_k_threshold)
+        cross_anywhere_signal = (k.shift(1) < d.shift(1)) & (k > d)
+        kd_cross_signal = cross_anywhere_signal & (k < kd_k_threshold)
         window_cross = kd_cross_signal.iloc[-(kd_window + 1):]
         kd_ok = bool(window_cross.any())
         k_val = float(k.iloc[-1])
         d_val = float(d.iloc[-1])
-        cross_anywhere = ((k.shift(1) < d.shift(1)) & (k > d)).iloc[-(kd_window + 1):].any()
+        window_any_cross = cross_anywhere_signal.iloc[-(kd_window + 1):]
+        cross_anywhere = bool(window_any_cross.any())
+        cross_idx = int(window_any_cross[window_any_cross].index[-1]) if cross_anywhere else None
+        qualified_idx = int(window_cross[window_cross].index[-1]) if kd_ok else None
+        display_idx = qualified_idx if qualified_idx is not None else cross_idx
+        cross_date = "—"
+        cross_k: float | None = None
+        cross_d: float | None = None
+        if display_idx is not None:
+            cross_date = str(df_up.loc[display_idx, "date"])[:10]
+            cross_k = float(k.loc[display_idx])
+            cross_d = float(d.loc[display_idx])
 
         kd_metrics.append({
             "name": f"近 {kd_window} 根有 KD 黃金交叉",
@@ -384,31 +426,44 @@ def diagnose_strategy_d(
             "passed": bool(cross_anywhere),
         })
         kd_metrics.append({
-            "name": "K 值（需低於閾值，低檔超賣）",
-            "actual": k_val,
+            "name": "交叉日",
+            "actual": cross_date,
+            "target": "近回看視窗內",
+            "passed": cross_anywhere,
+        })
+        kd_metrics.append({
+            "name": "交叉當日 K（需低於閾值，低檔超賣）",
+            "actual": cross_k if cross_k is not None else "—",
             "target": float(kd_k_threshold),
             "unit": "",
             "comparison": "<",
-            "passed": k_val < kd_k_threshold,
-            "progress": min(kd_k_threshold / max(k_val, 0.01), 1.0),
+            "passed": (cross_k < kd_k_threshold) if cross_k is not None else False,
+            "progress": min(kd_k_threshold / max(cross_k, 0.01), 1.0) if cross_k is not None else 0.0,
         })
         kd_metrics.append({
-            "name": "D 值（參考）",
-            "actual": d_val,
+            "name": "交叉當日 D（參考）",
+            "actual": cross_d if cross_d is not None else "—",
+            "target": "—",
+            "unit": "",
+        })
+        kd_metrics.append({
+            "name": "診斷日 K/D（參考）",
+            "actual": f"K={k_val:.1f}, D={d_val:.1f}",
             "target": "—",
             "unit": "",
         })
 
         if kd_ok:
             kd_summary = (
-                f"K={k_val:.1f}, D={d_val:.1f}｜"
-                f"最近 {kd_window} 根內有黃金交叉且 K < {kd_k_threshold}"
+                f"交叉日 {cross_date}：K={cross_k:.1f}, D={cross_d:.1f}｜"
+                f"診斷日 K={k_val:.1f}, D={d_val:.1f}｜"
+                f"最近 {kd_window} 根內有黃金交叉且交叉當日 K < {kd_k_threshold}"
             )
         else:
             if not cross_anywhere:
                 reason = f"最近 {kd_window} 根內無 KD 黃金交叉"
-            elif k_val >= kd_k_threshold:
-                reason = f"K={k_val:.1f} ≥ 閾值 {kd_k_threshold}"
+            elif cross_k is not None and cross_k >= kd_k_threshold:
+                reason = f"交叉當日 K={cross_k:.1f} ≥ 閾值 {kd_k_threshold}"
             else:
                 reason = f"交叉時 K ≥ 閾值 {kd_k_threshold}"
             kd_summary = f"K={k_val:.1f}, D={d_val:.1f}｜{reason}"
@@ -423,7 +478,7 @@ def diagnose_strategy_d(
             "summary": macd_summary,
         },
         {
-            "condition": f"KD 黃金交叉（低檔，回看 {kd_window} 根，K < {kd_k_threshold}）",
+            "condition": f"KD 黃金交叉（目前設定：回看 {kd_window} 根，交叉當日 K < {kd_k_threshold}）",
             "passed": kd_ok,
             "metrics": kd_metrics,
             "summary": kd_summary,
@@ -449,12 +504,13 @@ def diagnose_strategy_d_sell(
     idx = int(df[date_mask].index[-1])
     df_up = df.iloc[: idx + 1]
 
-    n_bars = int(params.get("n_bars", 5))
-    recovery_pct = float(params.get("recovery_pct", 0.7))
-    kd_window = int(params.get("kd_window", 10))
-    kd_d_threshold = int(params.get("kd_d_threshold", 80))
-    max_violations = int(params.get("max_violations", 0))
-    lookback_bars = int(params.get("lookback_bars", 20))
+    sp = _sell_params(params)
+    n_bars = sp["n_bars"]
+    recovery_pct = sp["recovery_pct"]
+    kd_window = sp["kd_window"]
+    kd_d_threshold = sp["kd_d_threshold"]
+    max_violations = sp["max_violations"]
+    lookback_bars = sp["lookback_bars"]
 
     # ── MACD 直方圖收斂（正值往下） ──
     macd_ok = False
@@ -529,12 +585,24 @@ def diagnose_strategy_d_sell(
     if len(df_up) >= 2:
         k = df_up["K"]
         d = df_up["D"]
-        kd_cross_signal = (k.shift(1) > d.shift(1)) & (k < d) & (k > kd_d_threshold)
+        cross_anywhere_signal = (k.shift(1) > d.shift(1)) & (k < d)
+        kd_cross_signal = cross_anywhere_signal & (k > kd_d_threshold)
         window_cross = kd_cross_signal.iloc[-(kd_window + 1):]
         kd_ok = bool(window_cross.any())
         k_val = float(k.iloc[-1])
         d_val = float(d.iloc[-1])
-        cross_anywhere = ((k.shift(1) > d.shift(1)) & (k < d)).iloc[-(kd_window + 1):].any()
+        window_any_cross = cross_anywhere_signal.iloc[-(kd_window + 1):]
+        cross_anywhere = bool(window_any_cross.any())
+        cross_idx = int(window_any_cross[window_any_cross].index[-1]) if cross_anywhere else None
+        qualified_idx = int(window_cross[window_cross].index[-1]) if kd_ok else None
+        display_idx = qualified_idx if qualified_idx is not None else cross_idx
+        cross_date = "—"
+        cross_k: float | None = None
+        cross_d: float | None = None
+        if display_idx is not None:
+            cross_date = str(df_up.loc[display_idx, "date"])[:10]
+            cross_k = float(k.loc[display_idx])
+            cross_d = float(d.loc[display_idx])
 
         kd_metrics.append({
             "name": f"近 {kd_window} 根有 KD 死亡交叉",
@@ -543,31 +611,44 @@ def diagnose_strategy_d_sell(
             "passed": bool(cross_anywhere),
         })
         kd_metrics.append({
-            "name": "K 值（需高於閾值，高檔超買）",
-            "actual": k_val,
+            "name": "交叉日",
+            "actual": cross_date,
+            "target": "近回看視窗內",
+            "passed": cross_anywhere,
+        })
+        kd_metrics.append({
+            "name": "交叉當日 K（需高於閾值，高檔超買）",
+            "actual": cross_k if cross_k is not None else "—",
             "target": float(kd_d_threshold),
             "unit": "",
             "comparison": ">",
-            "passed": k_val > kd_d_threshold,
-            "progress": min(k_val / max(kd_d_threshold, 0.01), 1.0),
+            "passed": (cross_k > kd_d_threshold) if cross_k is not None else False,
+            "progress": min(cross_k / max(kd_d_threshold, 0.01), 1.0) if cross_k is not None else 0.0,
         })
         kd_metrics.append({
-            "name": "D 值（參考）",
-            "actual": d_val,
+            "name": "交叉當日 D（參考）",
+            "actual": cross_d if cross_d is not None else "—",
+            "target": "—",
+            "unit": "",
+        })
+        kd_metrics.append({
+            "name": "診斷日 K/D（參考）",
+            "actual": f"K={k_val:.1f}, D={d_val:.1f}",
             "target": "—",
             "unit": "",
         })
 
         if kd_ok:
             kd_summary = (
-                f"K={k_val:.1f}, D={d_val:.1f}｜"
-                f"最近 {kd_window} 根內有死亡交叉且 K > {kd_d_threshold}"
+                f"交叉日 {cross_date}：K={cross_k:.1f}, D={cross_d:.1f}｜"
+                f"診斷日 K={k_val:.1f}, D={d_val:.1f}｜"
+                f"最近 {kd_window} 根內有死亡交叉且交叉當日 K > {kd_d_threshold}"
             )
         else:
             if not cross_anywhere:
                 reason = f"最近 {kd_window} 根內無 KD 死亡交叉"
-            elif k_val <= kd_d_threshold:
-                reason = f"K={k_val:.1f} ≤ 閾值 {kd_d_threshold}"
+            elif cross_k is not None and cross_k <= kd_d_threshold:
+                reason = f"交叉當日 K={cross_k:.1f} ≤ 閾值 {kd_d_threshold}"
             else:
                 reason = f"交叉時 K ≤ 閾值 {kd_d_threshold}"
             kd_summary = f"K={k_val:.1f}, D={d_val:.1f}｜{reason}"
@@ -582,7 +663,7 @@ def diagnose_strategy_d_sell(
             "summary": macd_summary,
         },
         {
-            "condition": f"KD 死亡交叉（高檔，回看 {kd_window} 根，K > {kd_d_threshold}）",
+            "condition": f"KD 死亡交叉（目前設定：回看 {kd_window} 根，交叉當日 K > {kd_d_threshold}）",
             "passed": kd_ok,
             "metrics": kd_metrics,
             "summary": kd_summary,
@@ -608,12 +689,12 @@ class StrategyD(StrategyBase):
 
     def default_params(self) -> dict[str, Any]:
         return {
-            "kd_window": 10,
+            "kd_window": 3,
             "n_bars": 3,
-            "recovery_pct": 0.7,
-            "kd_k_threshold": 20,
+            "recovery_pct": 0.6,
+            "kd_k_threshold": 22,
             "kd_d_threshold": 80,
-            "max_violations": 0,
+            "max_violations": 1,
             "lookback_bars": 20,
             "enable_sell_signal": True,
             "macd_fast": 12,
@@ -622,22 +703,36 @@ class StrategyD(StrategyBase):
             "kd_k": 9,
             "kd_d": 3,
             "kd_smooth_k": 3,
+            "buy_kd_window": 3,
+            "buy_n_bars": 3,
+            "buy_recovery_pct": 0.6,
+            "buy_kd_k_threshold": 22,
+            "buy_max_violations": 1,
+            "buy_lookback_bars": 20,
+            "sell_kd_window": 3,
+            "sell_n_bars": 3,
+            "sell_recovery_pct": 0.6,
+            "sell_kd_d_threshold": 80,
+            "sell_max_violations": 1,
+            "sell_lookback_bars": 20,
         }
 
     def compute(self, df: pd.DataFrame, params: dict[str, Any]) -> list[Signal]:
         p = {**self.default_params(), **params}
         df = prepare_df(df, p)
+        bp = _buy_params(params)
+        sp = _sell_params(params)
 
         signals: list[Signal] = []
 
         buy_df = scan_strategy_d(
             df,
-            kd_window=p["kd_window"],
-            n_bars=p["n_bars"],
-            recovery_pct=p["recovery_pct"],
-            kd_k_threshold=p["kd_k_threshold"],
-            max_violations=p["max_violations"],
-            lookback_bars=p["lookback_bars"],
+            kd_window=bp["kd_window"],
+            n_bars=bp["n_bars"],
+            recovery_pct=bp["recovery_pct"],
+            kd_k_threshold=bp["kd_k_threshold"],
+            max_violations=bp["max_violations"],
+            lookback_bars=bp["lookback_bars"],
         )
         for _, row in buy_df.iterrows():
             signals.append(Signal(
@@ -650,12 +745,12 @@ class StrategyD(StrategyBase):
         if p.get("enable_sell_signal", True):
             sell_df = scan_strategy_d_sell(
                 df,
-                kd_window=p["kd_window"],
-                n_bars=p["n_bars"],
-                recovery_pct=p["recovery_pct"],
-                kd_d_threshold=p["kd_d_threshold"],
-                max_violations=p["max_violations"],
-                lookback_bars=p["lookback_bars"],
+                kd_window=sp["kd_window"],
+                n_bars=sp["n_bars"],
+                recovery_pct=sp["recovery_pct"],
+                kd_d_threshold=sp["kd_d_threshold"],
+                max_violations=sp["max_violations"],
+                lookback_bars=sp["lookback_bars"],
             )
             for _, row in sell_df.iterrows():
                 signals.append(Signal(

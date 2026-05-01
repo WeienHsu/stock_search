@@ -3,10 +3,18 @@ from pathlib import Path
 
 import streamlit as st
 
+import src.strategies.strategy_d    # ensure registration
+import src.strategies.strategy_kd   # ensure registration
+
 _SETTINGS_PATH = Path(__file__).parents[2] / "config" / "default_settings.json"
 
 _THEME_OPTIONS = {"Morandi 暖色": "morandi", "Dark 深色": "dark"}
 _THEME_LABELS  = {v: k for k, v in _THEME_OPTIONS.items()}
+
+_STRATEGY_LABELS = {
+    "strategy_d":  "Strategy D（MACD + KD）",
+    "strategy_kd": "Strategy KD（黃金 / 死亡交叉）",
+}
 
 
 def _load_defaults() -> dict:
@@ -17,6 +25,7 @@ def _load_defaults() -> dict:
 def render_sidebar(user_id: str) -> dict:
     """Render sidebar and return a config dict with all user selections."""
     from src.repositories.preferences_repo import get_preferences, save_preferences
+    from src.core.strategy_registry import list_strategies
 
     defaults = _load_defaults()
     prefs = get_preferences(user_id)
@@ -43,9 +52,14 @@ def render_sidebar(user_id: str) -> dict:
     st.sidebar.markdown("---")
 
     # ── Ticker input ──
+    nav_ticker = normalize_query_ticker()
+    if nav_ticker and nav_ticker != st.session_state.get("_applied_query_ticker"):
+        st.session_state["sidebar_ticker"] = nav_ticker
+        st.session_state["_applied_query_ticker"] = nav_ticker
     ticker = st.sidebar.text_input(
-        "股票代號", value=prefs.get("last_ticker", defaults["ui"]["default_ticker"]),
+        "股票代號", value=nav_ticker or prefs.get("last_ticker", defaults["ui"]["default_ticker"]),
         placeholder="e.g. 2330.TW / TSLA",
+        key="sidebar_ticker",
     ).strip().upper()
 
     # ── Time period ──
@@ -61,22 +75,93 @@ def render_sidebar(user_id: str) -> dict:
 
     st.sidebar.markdown("---")
 
+    # ── Active strategies (Dashboard chart overlay) ──
+    all_strategies = list_strategies()
+    saved_active = [s for s in prefs.get("active_strategies", ["strategy_d"]) if s in all_strategies]
+    if not saved_active:
+        saved_active = ["strategy_d"]
+    active_strategies = st.sidebar.multiselect(
+        "顯示策略訊號",
+        options=all_strategies,
+        default=saved_active,
+        format_func=lambda x: _STRATEGY_LABELS.get(x, x),
+    )
+
+    st.sidebar.markdown("---")
+
     # ── Strategy D params (collapsible) ──
     sd = defaults["strategy_d"]
     with st.sidebar.expander("Strategy D 參數", expanded=False):
-        kd_window  = st.slider("KD 回看視窗", 5, 20, prefs.get("kd_window", sd["kd_window"]))
-        n_bars     = st.slider("MACD 收斂根數", 3, 10, prefs.get("n_bars", sd["n_bars"]))
-        max_viol   = st.slider("MACD 容忍違反根數", 0, 3, prefs.get("max_violations", sd.get("max_violations", 1)),
-                               help="0 = 嚴格單調；1 = 容忍 1 根反向（預設）")
-        lookback   = st.slider("MACD 峰谷回看根數", 10, 40, prefs.get("lookback_bars", sd.get("lookback_bars", 20)))
-        recovery   = st.slider("回彈比例 (%)", 0.3, 0.9,
-                               float(prefs.get("recovery_pct", sd["recovery_pct"])), step=0.05)
-        kd_thresh  = st.slider("買進 KD 閾值（低檔）", 10, 35,
-                               prefs.get("kd_k_threshold", sd["kd_k_threshold"]))
-        enable_sell = st.checkbox("啟用賣出訊號", value=prefs.get("enable_sell_signal", sd.get("enable_sell_signal", True)))
-        kd_d_thresh = st.slider("賣出 KD 閾值（高檔）", 65, 95,
-                                prefs.get("kd_d_threshold", sd.get("kd_d_threshold", 80)),
-                                disabled=not enable_sell)
+        st.caption("買進與賣出可分開調整；未保存的新使用者會沿用既有預設值。")
+        buy_kd_window = st.slider("買進 KD 回看視窗", 1, 10, prefs.get("buy_kd_window", prefs.get("kd_window", sd["buy_kd_window"])))
+        buy_n_bars = st.slider("買進 MACD 收斂根數", 3, 10, prefs.get("buy_n_bars", prefs.get("n_bars", sd["buy_n_bars"])))
+        buy_max_viol = st.slider(
+            "買進 MACD 容忍違反根數", 0, 3,
+            prefs.get("buy_max_violations", prefs.get("max_violations", sd["buy_max_violations"])),
+            help="0 = 嚴格單調；1 = 容忍 1 根反向（預設）",
+        )
+        buy_lookback = st.slider("買進 MACD 峰谷回看根數", 10, 40, prefs.get("buy_lookback_bars", prefs.get("lookback_bars", sd["buy_lookback_bars"])))
+        buy_recovery = st.slider(
+            "買進回彈比例 (%)", 0.3, 0.9,
+            float(prefs.get("buy_recovery_pct", prefs.get("recovery_pct", sd["buy_recovery_pct"]))), step=0.05,
+        )
+        buy_kd_thresh = st.slider(
+            "買進 KD 閾值（低檔）", 10, 35,
+            prefs.get("buy_kd_k_threshold", prefs.get("kd_k_threshold", sd["buy_kd_k_threshold"])),
+        )
+        enable_sell = st.checkbox("啟用賣出訊號", value=prefs.get("enable_sell_signal", sd.get("enable_sell_signal", True)), key="sd_enable_sell")
+        sell_kd_window = st.slider("賣出 KD 回看視窗", 1, 10, prefs.get("sell_kd_window", prefs.get("kd_window", sd["sell_kd_window"])), disabled=not enable_sell)
+        sell_n_bars = st.slider("賣出 MACD 收斂根數", 3, 10, prefs.get("sell_n_bars", prefs.get("n_bars", sd["sell_n_bars"])), disabled=not enable_sell)
+        sell_max_viol = st.slider(
+            "賣出 MACD 容忍違反根數", 0, 3,
+            prefs.get("sell_max_violations", prefs.get("max_violations", sd["sell_max_violations"])),
+            disabled=not enable_sell,
+            help="0 = 嚴格單調；1 = 容忍 1 根反向（預設）",
+        )
+        sell_lookback = st.slider("賣出 MACD 峰谷回看根數", 10, 40, prefs.get("sell_lookback_bars", prefs.get("lookback_bars", sd["sell_lookback_bars"])), disabled=not enable_sell)
+        sell_recovery = st.slider(
+            "賣出回落比例 (%)", 0.3, 0.9,
+            float(prefs.get("sell_recovery_pct", prefs.get("recovery_pct", sd["sell_recovery_pct"]))), step=0.05,
+            disabled=not enable_sell,
+        )
+        sell_kd_d_thresh = st.slider(
+            "賣出 KD 閾值（高檔）", 65, 95,
+            prefs.get("sell_kd_d_threshold", prefs.get("kd_d_threshold", sd["sell_kd_d_threshold"])),
+            disabled=not enable_sell,
+        )
+
+    # ── Strategy KD params (collapsible) ──
+    skd = defaults.get("strategy_kd", {})
+    with st.sidebar.expander("Strategy KD 參數", expanded=False):
+        enable_k_thresh = st.checkbox(
+            "啟用低檔篩選（黃金交叉）",
+            value=prefs.get("skd_enable_k_thresh", False),
+            help="僅在 K 值低於閾值時才計算黃金交叉",
+            key="skd_enable_k_thresh",
+        )
+        skd_k_thresh = st.slider(
+            "黃金交叉 K 閾值", 10, 50,
+            prefs.get("skd_k_threshold", 30),
+            disabled=not enable_k_thresh,
+            key="skd_k_thresh_slider",
+        )
+        enable_d_thresh = st.checkbox(
+            "啟用高檔篩選（死亡交叉）",
+            value=prefs.get("skd_enable_d_thresh", False),
+            help="僅在 K 值高於閾值時才計算死亡交叉",
+            key="skd_enable_d_thresh",
+        )
+        skd_d_thresh = st.slider(
+            "死亡交叉 K 閾值", 50, 90,
+            prefs.get("skd_d_threshold", 70),
+            disabled=not enable_d_thresh,
+            key="skd_d_thresh_slider",
+        )
+        skd_enable_sell = st.checkbox(
+            "啟用賣出訊號",
+            value=prefs.get("skd_enable_sell", skd.get("enable_sell", True)),
+            key="skd_enable_sell",
+        )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**指標顯示**")
@@ -102,19 +187,41 @@ def render_sidebar(user_id: str) -> dict:
         default=prefs.get("ma_periods", [5, 20, 60]),
     )
 
+    # Shared KD indicator params (reused by both strategies)
+    kd_indicator = {k: sd[k] for k in ("kd_k", "kd_d", "kd_smooth_k")}
+
     return {
         "ticker": ticker,
         "period": period,
+        "active_strategies": active_strategies,
         "strategy_d": {
-            "kd_window": kd_window,
-            "n_bars": n_bars,
-            "recovery_pct": recovery,
-            "kd_k_threshold": kd_thresh,
-            "kd_d_threshold": kd_d_thresh,
-            "max_violations": max_viol,
-            "lookback_bars": lookback,
+            "kd_window": buy_kd_window,
+            "n_bars": buy_n_bars,
+            "recovery_pct": buy_recovery,
+            "kd_k_threshold": buy_kd_thresh,
+            "kd_d_threshold": sell_kd_d_thresh,
+            "max_violations": buy_max_viol,
+            "lookback_bars": buy_lookback,
             "enable_sell_signal": enable_sell,
+            "buy_kd_window": buy_kd_window,
+            "buy_n_bars": buy_n_bars,
+            "buy_recovery_pct": buy_recovery,
+            "buy_kd_k_threshold": buy_kd_thresh,
+            "buy_max_violations": buy_max_viol,
+            "buy_lookback_bars": buy_lookback,
+            "sell_kd_window": sell_kd_window,
+            "sell_n_bars": sell_n_bars,
+            "sell_recovery_pct": sell_recovery,
+            "sell_kd_d_threshold": sell_kd_d_thresh,
+            "sell_max_violations": sell_max_viol,
+            "sell_lookback_bars": sell_lookback,
             **{k: sd[k] for k in ("macd_fast", "macd_slow", "macd_signal", "kd_k", "kd_d", "kd_smooth_k")},
+        },
+        "strategy_kd": {
+            "k_threshold": skd_k_thresh if enable_k_thresh else None,
+            "d_threshold": skd_d_thresh if enable_d_thresh else None,
+            "enable_sell": skd_enable_sell,
+            **kd_indicator,
         },
         "show_macd": show_macd,
         "show_kd": show_kd,
@@ -123,3 +230,13 @@ def render_sidebar(user_id: str) -> dict:
         "bias_period": int(bias_period),
         "ma_periods": ma_periods,
     }
+
+
+def normalize_query_ticker() -> str:
+    try:
+        ticker = st.query_params.get("ticker", "")
+        if isinstance(ticker, list):
+            ticker = ticker[0] if ticker else ""
+        return str(ticker).strip().upper()
+    except Exception:
+        return ""

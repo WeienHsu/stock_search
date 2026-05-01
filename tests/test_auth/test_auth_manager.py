@@ -1,6 +1,15 @@
+import time
+
 import pytest
 
-from src.auth.auth_manager import authenticate, register_user, user_exists
+from src.auth.auth_manager import (
+    authenticate,
+    create_session,
+    delete_session,
+    register_user,
+    resolve_session,
+    user_exists,
+)
 
 
 @pytest.fixture
@@ -38,3 +47,29 @@ def test_user_exists(db):
     assert not user_exists(db_path=db)
     register_user("eve", "pw1234", db_path=db)
     assert user_exists(db_path=db)
+
+
+def test_persistent_session_resolves_user(db):
+    user_id = register_user("frank", "secret123", db_path=db)
+    token = create_session(user_id, db_path=db)
+
+    resolved = resolve_session(token, db_path=db)
+
+    assert resolved == {"user_id": user_id, "username": "frank", "is_admin": True}
+
+
+def test_delete_session_invalidates_token(db):
+    user_id = register_user("grace", "secret123", db_path=db)
+    token = create_session(user_id, db_path=db)
+
+    delete_session(token, db_path=db)
+
+    assert resolve_session(token, db_path=db) is None
+
+
+def test_expired_session_is_rejected(db):
+    user_id = register_user("heidi", "secret123", db_path=db)
+    token = create_session(user_id, ttl_seconds=-1, db_path=db)
+    time.sleep(0.01)
+
+    assert resolve_session(token, db_path=db) is None

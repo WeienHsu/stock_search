@@ -1,7 +1,7 @@
 import streamlit as st
 
 from src.auth.auth_manager import (
-    authenticate, is_registration_enabled, is_user_admin, register_user, user_exists,
+    authenticate, create_session, is_registration_enabled, is_user_admin, register_user, user_exists,
 )
 
 
@@ -24,6 +24,8 @@ def render() -> None:
                         st.session_state["user_id"] = result["user_id"]
                         st.session_state["username"] = username.strip()
                         st.session_state["is_admin"] = result["is_admin"]
+                        st.session_state["auth_token"] = create_session(result["user_id"])
+                        st.session_state["_set_auth_cookie"] = st.session_state["auth_token"]
                         st.rerun()
                     else:
                         st.error("用戶名或密碼錯誤")
@@ -47,6 +49,8 @@ def render() -> None:
                             st.session_state["user_id"] = user_id
                             st.session_state["username"] = new_user.strip()
                             st.session_state["is_admin"] = is_user_admin(user_id)
+                            st.session_state["auth_token"] = create_session(user_id)
+                            st.session_state["_set_auth_cookie"] = st.session_state["auth_token"]
                             st.success("帳號建立成功！")
                             st.rerun()
                         except ValueError as exc:

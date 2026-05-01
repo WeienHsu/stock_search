@@ -1,54 +1,155 @@
 import streamlit as st
+import pandas as pd
 
 from src.core.sorting import sort_watchlist_items
+from src.core.strategy_registry import list_strategies
 from src.repositories.watchlist_repo import get_watchlist
 from src.scanner.watchlist_scanner import scan_watchlist
+
+import src.strategies.strategy_d   # ensure registration
+import src.strategies.strategy_kd  # ensure registration
+
+_STRATEGY_LABELS = {
+    "strategy_d":  "Strategy D（MACD + KD）",
+    "strategy_kd": "Strategy KD（黃金 / 死亡交叉）",
+}
+
+_SORT_OPTIONS = {
+    "訊號優先": "__signal_priority__",
+    "代號": "ticker",
+    "名稱": "name",
+    "現價": "current_close",
+    "買進狀態": "buy_status",
+    "最近買進日": "last_buy_date",
+    "賣出狀態": "sell_status",
+    "最近賣出日": "last_sell_date",
+}
 
 
 def render(cfg: dict, user_id: str) -> None:
     st.markdown("## 市場掃描器")
-    st.caption("掃描自選清單，標示當前 Strategy D 買進 / 賣出訊號狀態")
 
     items = sort_watchlist_items(get_watchlist(user_id))
     if not items:
         st.info("自選清單為空，請先至「設定」頁面新增股票。")
         return
 
+    col_strat, col_btn = st.columns([3, 1])
+    with col_strat:
+        available = list_strategies()
+        strategy_id = st.selectbox(
+            "掃描策略",
+            options=available,
+            index=0,
+            format_func=lambda x: _STRATEGY_LABELS.get(x, x),
+            key="scanner_strategy",
+        )
+    with col_btn:
+        st.markdown("<div style='padding-top:1.6rem'></div>", unsafe_allow_html=True)
+        run_scan = st.button("開始掃描", use_container_width=True)
+
     tickers_display = ", ".join(i["ticker"] for i in items)
-    st.markdown(f"**自選清單**：{tickers_display}")
+    st.caption(f"自選清單：{tickers_display}")
 
-    if st.button("開始掃描", use_container_width=False):
-        with st.spinner("掃描中，請稍候…"):
-            result_df = scan_watchlist(items, cfg["strategy_d"])
+    strategy_params = cfg.get(strategy_id, {})
+    strategy_label = _STRATEGY_LABELS.get(strategy_id, strategy_id)
 
-        if result_df.empty:
-            st.warning("掃描無結果")
+    if run_scan:
+        with st.spinner(f"使用 {strategy_label} 掃描中，請稍候…"):
+            result_df = scan_watchlist(items, strategy_id=strategy_id, strategy_params=strategy_params)
+        st.session_state["scanner_result_df"] = result_df
+        st.session_state["scanner_result_strategy_id"] = strategy_id
+        st.session_state["scanner_result_strategy_label"] = strategy_label
+    else:
+        result_df = st.session_state.get("scanner_result_df")
+        if result_df is None:
+            st.info("選擇策略後點擊「開始掃描」")
             return
+        stored_strategy_id = st.session_state.get("scanner_result_strategy_id")
+        if stored_strategy_id != strategy_id:
+            st.info("掃描策略已變更，請重新點擊「開始掃描」")
+            return
+        strategy_label = st.session_state.get("scanner_result_strategy_label", strategy_label)
 
-        # Sort: buy triggered first, then sell triggered, then others
-        result_df = result_df.sort_values(
-            ["buy_signal", "sell_signal"], ascending=[False, False]
+    if result_df.empty:
+        st.warning("掃描無結果")
+        return
+
+    result_df = _sort_results(result_df)
+
+    triggered_buy  = result_df[result_df["buy_signal"]  == True]
+    triggered_sell = result_df[result_df["sell_signal"] == True]
+
+    if not triggered_buy.empty:
+        st.success(f"**{len(triggered_buy)}** 檔觸發買進訊號（{strategy_label}）")
+    if not triggered_sell.empty:
+        st.warning(f"**{len(triggered_sell)}** 檔觸發賣出訊號（{strategy_label}）")
+
+    _render_result_rows(result_df)
+
+
+def _sort_results(result_df: pd.DataFrame) -> pd.DataFrame:
+    col_sort, col_dir = st.columns([2, 1])
+    with col_sort:
+        sort_label = st.selectbox(
+            "排序欄位",
+            options=list(_SORT_OPTIONS.keys()),
+            index=0,
+            key="scanner_sort_field",
+        )
+    with col_dir:
+        descending = st.toggle("由大到小", value=True, key="scanner_sort_desc")
+
+    sort_col = _SORT_OPTIONS[sort_label]
+    if sort_col == "__signal_priority__":
+        return result_df.sort_values(
+            ["buy_signal", "sell_signal", "ticker"],
+            ascending=[False, False, True],
         ).reset_index(drop=True)
 
-        triggered_buy  = result_df[result_df["buy_signal"]  == True]
-        triggered_sell = result_df[result_df["sell_signal"] == True]
+    sorted_df = result_df.copy()
+    if sort_col in {"last_buy_date", "last_sell_date"}:
+        sorted_df[f"__{sort_col}_sort"] = pd.to_datetime(
+            sorted_df[sort_col].replace("—", pd.NA),
+            errors="coerce",
+        )
+        return sorted_df.sort_values(
+            [f"__{sort_col}_sort", "ticker"],
+            ascending=[not descending, True],
+            na_position="last",
+        ).drop(columns=[f"__{sort_col}_sort"]).reset_index(drop=True)
 
-        if not triggered_buy.empty:
-            st.success(f"**{len(triggered_buy)}** 檔觸發買進訊號")
-        if not triggered_sell.empty:
-            st.warning(f"**{len(triggered_sell)}** 檔觸發賣出訊號")
+    return sorted_df.sort_values(
+        [sort_col, "ticker"],
+        ascending=[not descending, True],
+        na_position="last",
+    ).reset_index(drop=True)
 
-        display_cols = ["ticker", "name", "current_close",
-                        "buy_status", "last_buy_date",
-                        "sell_status", "last_sell_date"]
-        col_names    = ["代號", "名稱", "現價",
-                        "買進狀態", "最近買進日",
-                        "賣出狀態", "最近賣出日"]
 
-        show_df = result_df[display_cols].copy()
-        show_df.columns = col_names
+def _render_result_rows(result_df: pd.DataFrame) -> None:
+    header = st.columns([1.1, 2.0, 1.0, 1.5, 1.3, 1.5, 1.3])
+    labels = ["代號", "名稱", "現價", "買進狀態", "最近買進日", "賣出狀態", "最近賣出日"]
+    for col, label in zip(header, labels):
+        col.markdown(f"**{label}**")
 
-        table_height = max(300, min(36 * len(show_df) + 38, 900))
-        st.dataframe(show_df, use_container_width=True, hide_index=True, height=table_height)
-    else:
-        st.info("點擊「開始掃描」執行")
+    for idx, row in result_df.iterrows():
+        ticker = str(row["ticker"])
+        cols = st.columns([1.1, 2.0, 1.0, 1.5, 1.3, 1.5, 1.3])
+        cols[0].button(
+            ticker,
+            key=f"scanner_open_{idx}_{ticker}",
+            help=f"在 Dashboard 查看 {ticker}",
+            on_click=_queue_dashboard_nav,
+            args=(ticker,),
+        )
+        cols[1].markdown(str(row.get("name", "")) or "—")
+        cols[2].markdown(f"{float(row.get('current_close', 0.0)):.2f}")
+        cols[3].markdown(str(row.get("buy_status", "—")))
+        cols[4].markdown(str(row.get("last_buy_date", "—")))
+        cols[5].markdown(str(row.get("sell_status", "—")))
+        cols[6].markdown(str(row.get("last_sell_date", "—")))
+
+
+def _queue_dashboard_nav(ticker: str) -> None:
+    st.session_state["_pending_nav_page"] = "📊 Dashboard"
+    st.session_state["_pending_ticker"] = ticker

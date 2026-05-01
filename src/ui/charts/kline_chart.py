@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+import json
+
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import streamlit.components.v1 as components
+
+
+@dataclass
+class SignalLayer:
+    """One strategy's buy/sell markers to overlay on the combined chart."""
+    strategy_id: str
+    label: str
+    buy_dates: list[str] = field(default_factory=list)
+    sell_dates: list[str] = field(default_factory=list)
+    buy_color: str = "#C8A86A"    # Morandi gold (Strategy D default)
+    sell_color: str = "#5B7FA8"   # steel blue (Strategy D default)
+    buy_glyph: str = "▼"
+    sell_glyph: str = "▲"
 
 
 def _price_y_range(df: pd.DataFrame, x_start: str | None) -> tuple[float, float] | None:
@@ -17,6 +34,11 @@ def _price_y_range(df: pd.DataFrame, x_start: str | None) -> tuple[float, float]
     y_min, y_max = float(visible["low"].min()), float(visible["high"].max())
     pad = (y_max - y_min) * 0.04
     return y_min - pad, y_max + pad
+
+
+def _safe_numeric_list(series: pd.Series) -> list[float | None]:
+    values = pd.to_numeric(series, errors="coerce")
+    return [None if pd.isna(v) else float(v) for v in values]
 
 
 def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
@@ -156,13 +178,14 @@ def build_combined_chart(
     period: str = "",
     sell_dates: list[str] | None = None,
     uirevision: str = "",
+    signal_layers: list[SignalLayer] | None = None,
 ) -> go.Figure:
     """Combined subplot figure with shared x-axis.
 
     Always renders full available history; initial view window is set via
     x_range_start so the user can pan/scroll further left into past data.
-    Y-axis is locked to prevent accidental rescaling — it auto-fits to the
-    initial visible window and resets on double-click / Reset button.
+    The price Y-axis is autoranged by Plotly as the visible X window changes,
+    while fixedrange prevents accidental manual Y dragging.
     """
     P = _get_palette()
     sell_dates = sell_dates or []
@@ -225,44 +248,47 @@ def build_combined_chart(
     new_annotations = []
     new_shapes = []
 
-    # ── Buy signal: ▼ at top, coral-orange vertical lines ──
-    if signal_dates:
-        for sig_date in signal_dates:
+    # ── Signal markers: iterate layers (multi-strategy support) ──
+    # Fall back to scalar signal_dates / sell_dates when signal_layers not provided.
+    if signal_layers is None:
+        signal_layers = [SignalLayer(
+            strategy_id="strategy_d",
+            label="Strategy D",
+            buy_dates=list(signal_dates or []),
+            sell_dates=list(sell_dates or []),
+            buy_color=P.GOLD,
+            sell_color=getattr(P, "SIGNAL_SELL", "#5B7FA8"),
+        )]
+
+    for layer in signal_layers:
+        for sig_date in layer.buy_dates:
             if str(sig_date)[:10] not in date_set:
                 continue
             new_annotations.append(dict(
                 x=sig_date, y=1.0,
                 xref="x", yref="y domain",
-                yanchor="top", text="▼", showarrow=False,
-                font=dict(color=P.GOLD, size=16, family="sans-serif"),
+                yanchor="top", text=layer.buy_glyph, showarrow=False,
+                font=dict(color=layer.buy_color, size=16, family="sans-serif"),
             ))
             new_shapes.append(dict(
-                type="line",
-                x0=sig_date, x1=sig_date,
-                y0=0, y1=1,
+                type="line", x0=sig_date, x1=sig_date, y0=0, y1=1,
                 xref="x", yref="paper",
-                line=dict(color=P.GOLD, width=1.5, dash="dot"),
+                line=dict(color=layer.buy_color, width=1.5, dash="dot"),
                 opacity=0.6,
             ))
-
-    # ── Sell signal: ▲ at bottom, steel-blue vertical lines ──
-    sell_color = getattr(P, "SIGNAL_SELL", "#5B7FA8")
-    if sell_dates:
-        for sell_date in sell_dates:
+        for sell_date in layer.sell_dates:
             if str(sell_date)[:10] not in date_set:
                 continue
             new_annotations.append(dict(
                 x=sell_date, y=0.0,
                 xref="x", yref="y domain",
-                yanchor="bottom", text="▲", showarrow=False,
-                font=dict(color=sell_color, size=16, family="sans-serif"),
+                yanchor="bottom", text=layer.sell_glyph, showarrow=False,
+                font=dict(color=layer.sell_color, size=16, family="sans-serif"),
             ))
             new_shapes.append(dict(
-                type="line",
-                x0=sell_date, x1=sell_date,
-                y0=0, y1=1,
+                type="line", x0=sell_date, x1=sell_date, y0=0, y1=1,
                 xref="x", yref="paper",
-                line=dict(color=sell_color, width=1.5, dash="dot"),
+                line=dict(color=layer.sell_color, width=1.5, dash="dot"),
                 opacity=0.6,
             ))
 
@@ -280,10 +306,9 @@ def build_combined_chart(
         dragmode="zoom",
     )
 
-    # ── Y-axis: lock all panels so box-drag zooms X only ──
-    # Price panel: fit Y to the visible initial window; user resets via double-click.
-    price_y = _price_y_range(df, x_range_start)
+    # ── Y-axis: lock manual Y-drag; dashboard renderer updates price Y on X relayout ──
     price_row = panels.index("main") + 1
+    price_y = _price_y_range(df, x_range_start)
     if price_y:
         fig.update_yaxes(fixedrange=True, range=list(price_y), row=price_row, col=1)
     else:
@@ -314,6 +339,120 @@ def build_combined_chart(
         fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
 
     return fig
+
+
+def render_combined_chart(
+    fig: go.Figure,
+    df: pd.DataFrame,
+    key: str,
+    config: dict | None = None,
+) -> None:
+    """Render Plotly chart with client-side price Y fitting on every X relayout."""
+    config = {
+        "displayModeBar": True,
+        "displaylogo": False,
+        "responsive": True,
+        **(config or {}),
+    }
+    div_id = f"chart_{''.join(ch if ch.isalnum() else '_' for ch in key)}"
+    dates = df["date"].astype(str).str[:10].tolist() if "date" in df.columns else []
+    lows = _safe_numeric_list(df["low"]) if "low" in df.columns else []
+    highs = _safe_numeric_list(df["high"]) if "high" in df.columns else []
+    height = int(fig.layout.height or 700) + 20
+
+    post_script = f"""
+(function() {{
+  const gd = document.getElementById({json.dumps(div_id)});
+  if (!gd) return;
+
+  const rawDates = {json.dumps(dates)};
+  const lows = {json.dumps(lows)};
+  const highs = {json.dumps(highs)};
+  const xs = rawDates.map(function(d) {{
+    const t = Date.parse(String(d).slice(0, 10) + "T00:00:00");
+    return Number.isFinite(t) ? t : null;
+  }});
+
+  function axisRange() {{
+    const candidates = [];
+    [gd.layout, gd._fullLayout].forEach(function(layout) {{
+      if (!layout) return;
+      ["xaxis"].concat(Object.keys(layout).filter(function(k) {{
+        return /^xaxis\\d+$/.test(k);
+      }})).forEach(function(axisKey) {{
+        if (layout[axisKey] && layout[axisKey].range) {{
+          candidates.push(layout[axisKey].range);
+        }}
+      }});
+    }});
+    for (const r of candidates) {{
+      if (!r || r.length < 2) continue;
+      const start = Date.parse(r[0]);
+      const end = Date.parse(r[1]);
+      if (Number.isFinite(start) && Number.isFinite(end)) {{
+        return [Math.min(start, end), Math.max(start, end)];
+      }}
+    }}
+    return null;
+  }}
+
+  function fitPriceYAxis() {{
+    const range = axisRange();
+    if (!range) return;
+
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i < xs.length; i += 1) {{
+      const x = xs[i];
+      if (x === null || x < range[0] || x > range[1]) continue;
+      const lo = lows[i];
+      const hi = highs[i];
+      if (Number.isFinite(lo)) minY = Math.min(minY, lo);
+      if (Number.isFinite(hi)) maxY = Math.max(maxY, hi);
+    }}
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
+
+    let pad = (maxY - minY) * 0.06;
+    if (!Number.isFinite(pad) || pad <= 0) {{
+      pad = Math.max(Math.abs(maxY) * 0.02, 1);
+    }}
+    Plotly.relayout(gd, {{
+      "yaxis.range": [minY - pad, maxY + pad],
+      "yaxis.autorange": false
+    }});
+  }}
+
+  let raf = null;
+  function scheduleFit() {{
+    if (raf !== null) window.cancelAnimationFrame(raf);
+    raf = window.requestAnimationFrame(function() {{
+      raf = null;
+      fitPriceYAxis();
+    }});
+  }}
+
+  gd.on("plotly_relayout", function(eventData) {{
+    const keys = Object.keys(eventData || {{}});
+    const xChanged = keys.some(function(k) {{
+      return /^xaxis\\d*\\.range/.test(k) ||
+             /^xaxis\\d*\\.autorange$/.test(k) ||
+             /^xaxis\\d*\\.rangeslider/.test(k);
+    }});
+    if (xChanged) scheduleFit();
+  }});
+  gd.on("plotly_doubleclick", scheduleFit);
+  window.addEventListener("resize", scheduleFit);
+  setTimeout(scheduleFit, 100);
+}})();
+"""
+    html = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=False,
+        div_id=div_id,
+        config=config,
+        post_script=post_script,
+    )
+    components.html(html, height=height, scrolling=False)
 
 
 # ── Standalone chart wrappers (for backtest_page and other callers) ──

@@ -1,12 +1,24 @@
 import sqlite3
 import time
 import uuid
+import hashlib
+import secrets
 from pathlib import Path
 from typing import Optional
 
 import bcrypt
 
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "auth.db"
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+
+
+class AuthResult(dict):
+    """Dict auth payload that remains comparable with legacy user_id tests."""
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.get("user_id") == other
+        return super().__eq__(other)
 
 
 def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
@@ -42,9 +54,22 @@ def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
             value TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            token_hash TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            expires_at REAL NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        )
+    """)
 
     conn.commit()
     return conn
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _is_registration_enabled_conn(conn: sqlite3.Connection) -> bool:
@@ -95,8 +120,63 @@ def authenticate(
             (username.strip(),),
         ).fetchone()
     if row and bcrypt.checkpw(password.encode(), row[1].encode()):
-        return {"user_id": row[0], "is_admin": bool(row[2])}
+        return AuthResult({"user_id": row[0], "is_admin": bool(row[2])})
     return None
+
+
+def create_session(
+    user_id: str,
+    ttl_seconds: int = SESSION_TTL_SECONDS,
+    db_path: Path = _DEFAULT_DB,
+) -> str:
+    """Create a persistent auth session and return the raw browser token."""
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _conn(db_path) as conn:
+        conn.execute(
+            "DELETE FROM user_sessions WHERE expires_at <= ?",
+            (now,),
+        )
+        conn.execute(
+            "INSERT INTO user_sessions (token_hash, user_id, created_at, expires_at) VALUES (?,?,?,?)",
+            (_hash_token(token), user_id, now, now + ttl_seconds),
+        )
+    return token
+
+
+def resolve_session(
+    token: str | None,
+    db_path: Path = _DEFAULT_DB,
+) -> Optional[dict]:
+    """Return dict(user_id, username, is_admin) for a valid persistent session."""
+    if not token:
+        return None
+    now = time.time()
+    with _conn(db_path) as conn:
+        conn.execute("DELETE FROM user_sessions WHERE expires_at <= ?", (now,))
+        row = conn.execute(
+            """
+            SELECT u.user_id, u.username, u.is_admin
+            FROM user_sessions s
+            JOIN users u ON u.user_id = s.user_id
+            WHERE s.token_hash = ? AND s.expires_at > ?
+            """,
+            (_hash_token(token), now),
+        ).fetchone()
+    if not row:
+        return None
+    return {"user_id": row[0], "username": row[1], "is_admin": bool(row[2])}
+
+
+def delete_session(token: str | None, db_path: Path = _DEFAULT_DB) -> None:
+    """Delete one persistent auth session."""
+    if not token:
+        return
+    with _conn(db_path) as conn:
+        conn.execute(
+            "DELETE FROM user_sessions WHERE token_hash = ?",
+            (_hash_token(token),),
+        )
 
 
 def user_exists(db_path: Path = _DEFAULT_DB) -> bool:

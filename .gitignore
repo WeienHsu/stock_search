@@ -36,6 +36,7 @@ env/
 # ── Claude Code local state ──
 .claude/
 PLAN.md
+AGENTS.md
 
 # ── NLTK downloaded data (if stored locally) ──
 nltk_data/

@@ -18,6 +18,18 @@ _DEFAULTS: dict[str, Any] = {
     "n_bars": 3,
     "recovery_pct": 0.7,
     "kd_k_threshold": 20,
+    "buy_kd_window": 10,
+    "buy_n_bars": 3,
+    "buy_recovery_pct": 0.7,
+    "buy_kd_k_threshold": 20,
+    "buy_max_violations": 1,
+    "buy_lookback_bars": 20,
+    "sell_kd_window": 10,
+    "sell_n_bars": 3,
+    "sell_recovery_pct": 0.7,
+    "sell_kd_d_threshold": 80,
+    "sell_max_violations": 1,
+    "sell_lookback_bars": 20,
 }
 
 
