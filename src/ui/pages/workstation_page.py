@@ -18,6 +18,7 @@ from src.ui.charts.kline_chart import build_combined_chart, render_combined_char
 from src.ui.components.categorized_watchlist import render_categorized_watchlist
 from src.ui.components.intraday_tick_chart import render_intraday_tick_chart
 from src.ui.components.market_summary import render_market_mini_strip
+from src.ui.components.source_health_badge import render_source_health_badge
 from src.ui.components.stock_detail_tabs import render_stock_detail_tabs
 
 
@@ -46,6 +47,7 @@ def render(cfg: dict, user_id: str) -> None:
         with st.container():
             st.markdown("### 大盤即時看板")
             _render_market_strip()
+            render_source_health_badge("taiex_realtime", "即時委買賣")
 
         ticker = str(st.session_state.get("workstation_active_ticker") or default_ticker).upper()
         with st.container():

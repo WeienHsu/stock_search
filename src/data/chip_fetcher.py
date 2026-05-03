@@ -1,44 +1,42 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 
+from src.data.chip_data_sources.base import ChipResult, SourceStatus
+from src.data.chip_data_sources import build_default_chain
+from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker, market_kind, ticker_code
 from src.data.data_source_probe import fetch_text, parse_json_list, parse_tpex_table, parse_twse_rwd_table
 from src.repositories.chip_data_cache_repo import get_chip_cache, save_chip_cache
 
-MarketKind = Literal["twse", "tpex", "unsupported"]
-
 _DAY = 24 * 3600
-
-
-def is_taiwan_ticker(ticker: str) -> bool:
-    return market_kind(ticker) != "unsupported"
-
-
-def market_kind(ticker: str) -> MarketKind:
-    normalized = ticker.upper()
-    if normalized.endswith(".TW"):
-        return "twse"
-    if normalized.endswith(".TWO"):
-        return "tpex"
-    return "unsupported"
 
 
 def fetch_chip_snapshot(ticker: str, institutional_days: int = 5, margin_days: int = 20) -> dict[str, Any]:
     kind = market_kind(ticker)
     if kind == "unsupported":
-        return {"supported": False, "ticker": ticker, "market": kind}
+        return {"supported": False, "ticker": ticker, "market": kind, "message": "僅支援台股"}
 
     code = ticker_code(ticker)
-    cache_key = f"chip_snapshot_v2_{kind}_{code}_{institutional_days}_{margin_days}"
+    cache_key = f"chip_snapshot_v4_{kind}_{code}_{institutional_days}_{margin_days}"
     cached = get_chip_cache(cache_key, ttl_override=_DAY)
     if isinstance(cached, dict) and cached:
         return cached
 
-    institutional = fetch_institutional_trades(ticker, institutional_days)
-    margin = fetch_margin_trend(ticker, margin_days)
+    chain = build_default_chain()
+    if is_probable_taiwan_etf(ticker):
+        institutional_result = ChipResult(
+            pd.DataFrame(),
+            SourceStatus("chip_institutional", "unsupported", "ETF 法人買賣超目前未支援"),
+        )
+    else:
+        institutional_result = chain.fetch_institutional_history(ticker, institutional_days)
+    margin_result = chain.fetch_margin_history(ticker, margin_days)
+    institutional = institutional_result.data if isinstance(institutional_result.data, pd.DataFrame) else pd.DataFrame()
+    margin = margin_result.data if isinstance(margin_result.data, pd.DataFrame) else pd.DataFrame()
+    major_holder = _safe_major_holder_snapshot(ticker)
     summary = summarize_chip_data(institutional, margin)
     result = {
         "supported": True,
@@ -47,40 +45,59 @@ def fetch_chip_snapshot(ticker: str, institutional_days: int = 5, margin_days: i
         "market": kind,
         "institutional": institutional,
         "margin": margin,
+        "major_holder": major_holder,
+        "qfiis_pct": major_holder.get("foreign_holding_pct"),
         "summary": summary,
+        "source_statuses": {
+            "institutional": _status_dict(institutional_result.source_status),
+            "margin": _status_dict(margin_result.source_status),
+            "major_holder": _safe_source_status(_safe_health_source_id(major_holder), major_holder),
+        },
     }
-    save_chip_cache(cache_key, result)
+    if _should_cache_chip_snapshot(result):
+        save_chip_cache(cache_key, result)
     return result
 
 
 def fetch_institutional_trades(ticker: str, days: int = 5) -> pd.DataFrame:
-    kind = market_kind(ticker)
-    code = ticker_code(ticker)
-    rows: list[dict[str, Any]] = []
-    for current in recent_trading_dates(days * 3 + 8):
-        if len(rows) >= days:
-            break
-        record = _fetch_twse_institutional_one_day(code, current) if kind == "twse" else _fetch_tpex_institutional_one_day(code, current)
-        if record:
-            rows.append(record)
-    return _rows_to_df(rows)
+    if is_probable_taiwan_etf(ticker):
+        return pd.DataFrame()
+    chain = build_default_chain()
+    result = chain.fetch_institutional_history(ticker, days)
+    if isinstance(result.data, pd.DataFrame):
+        return result.data
+    return pd.DataFrame()
 
 
 def fetch_margin_trend(ticker: str, days: int = 20) -> pd.DataFrame:
-    kind = market_kind(ticker)
-    code = ticker_code(ticker)
-    rows: list[dict[str, Any]] = []
-    for current in recent_trading_dates(days * 3 + 12):
-        if len(rows) >= days:
-            break
-        record = _fetch_twse_margin_one_day(code, current) if kind == "twse" else _fetch_tpex_margin_one_day(code, current)
-        if record:
-            rows.append(record)
-    if kind == "twse" and not rows:
-        latest = _fetch_twse_margin_latest(code)
-        if latest:
-            rows.append(latest)
-    return _rows_to_df(rows)
+    chain = build_default_chain()
+    result = chain.fetch_margin_history(ticker, days)
+    if isinstance(result.data, pd.DataFrame):
+        return result.data
+    return pd.DataFrame()
+
+
+def fetch_today(ticker: str) -> dict[str, Any]:
+    snapshot = fetch_chip_snapshot(ticker)
+    if not snapshot.get("supported"):
+        return snapshot
+    institutional = snapshot.get("institutional")
+    margin = snapshot.get("margin")
+    major_holder = snapshot.get("major_holder") or {}
+    snapshot_date = _latest_snapshot_date(institutional, margin, major_holder)
+    source = snapshot.get("source_statuses", {})
+    return {
+        "supported": True,
+        "ticker": snapshot.get("ticker", ticker).upper(),
+        "date": snapshot_date,
+        "institutional_foreign": _latest_numeric(institutional, "foreign_net_lots"),
+        "institutional_trust": _latest_numeric(institutional, "investment_trust_net_lots"),
+        "institutional_dealer": _latest_numeric(institutional, "dealer_net_lots"),
+        "margin_balance": _latest_numeric(margin, "margin_balance"),
+        "short_balance": _latest_numeric(margin, "short_balance"),
+        "qfiis_pct": major_holder.get("foreign_holding_pct"),
+        "source": source,
+    }
 
 
 def summarize_chip_data(institutional: pd.DataFrame, margin: pd.DataFrame) -> dict[str, Any]:
@@ -273,10 +290,6 @@ def recent_trading_dates(limit: int) -> list[date]:
     return dates
 
 
-def ticker_code(ticker: str) -> str:
-    return ticker.upper().split(".", 1)[0]
-
-
 def _to_float(value: Any) -> float:
     if value is None:
         return 0.0
@@ -287,3 +300,75 @@ def _to_float(value: Any) -> float:
         return float(text)
     except ValueError:
         return 0.0
+
+
+def _latest_numeric(df: Any, column: str) -> float:
+    if not isinstance(df, pd.DataFrame) or df.empty or column not in df.columns:
+        return 0.0
+    value = pd.to_numeric(df[column], errors="coerce").dropna()
+    if value.empty:
+        return 0.0
+    return float(value.iloc[-1])
+
+
+def _latest_snapshot_date(*values: Any) -> str:
+    dates: list[str] = []
+    for value in values:
+        if isinstance(value, pd.DataFrame) and not value.empty and "date" in value.columns:
+            series = value["date"].dropna().astype(str)
+            dates.extend(item[:10] for item in series if item)
+        elif isinstance(value, dict) and value.get("date"):
+            dates.append(str(value["date"])[:10])
+    return max(dates) if dates else date.today().strftime("%Y-%m-%d")
+
+
+def _status_dict(status: Any) -> dict[str, Any]:
+    if status is None:
+        return {}
+    return {
+        "source_id": getattr(status, "source_id", ""),
+        "status": getattr(status, "status", "unknown"),
+        "reason": getattr(status, "reason", ""),
+        "last_success_at": getattr(status, "last_success_at", None),
+    }
+
+
+def _safe_major_holder_snapshot(ticker: str) -> dict[str, Any]:
+    from src.data.major_holder_fetcher import fetch_major_holder_snapshot
+
+    try:
+        return fetch_major_holder_snapshot(ticker)
+    except Exception as exc:
+        return {"supported": False, "ticker": ticker, "message": str(exc)}
+
+
+def _safe_health_source_id(snapshot: dict[str, Any]) -> str:
+    source = snapshot.get("source")
+    if isinstance(source, str) and source:
+        return source
+    return "major_holder_qfiis"
+
+
+def _safe_source_status(source_id: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+    message = str(snapshot.get("message") or "")
+    supported = snapshot.get("supported")
+    status = "ok" if supported and snapshot.get("foreign_holding_pct") is not None else "unavailable"
+    if supported is False:
+        status = "unsupported"
+    return {
+        "source_id": source_id,
+        "status": status,
+        "reason": message,
+    }
+
+
+def _should_cache_chip_snapshot(snapshot: dict[str, Any]) -> bool:
+    statuses = snapshot.get("source_statuses")
+    if not isinstance(statuses, dict):
+        return False
+    for status in statuses.values():
+        if not isinstance(status, dict):
+            return False
+        if status.get("status") == "unavailable":
+            return False
+    return True

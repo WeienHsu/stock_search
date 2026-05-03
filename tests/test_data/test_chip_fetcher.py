@@ -4,6 +4,7 @@ from datetime import date
 import pandas as pd
 
 from src.data import chip_fetcher
+from src.data.chip_data_sources.base import ChipResult, SourceStatus
 
 
 def test_market_kind_only_supports_taiwan_tickers():
@@ -92,4 +93,70 @@ def test_summarize_chip_data_counts_institutional_and_margin_change():
 def test_fetch_chip_snapshot_hides_unsupported_ticker():
     result = chip_fetcher.fetch_chip_snapshot("GOOGL")
 
-    assert result == {"supported": False, "ticker": "GOOGL", "market": "unsupported"}
+    assert result == {"supported": False, "ticker": "GOOGL", "market": "unsupported", "message": "僅支援台股"}
+
+
+def test_fetch_today_uses_latest_data_date(monkeypatch):
+    monkeypatch.setattr(
+        chip_fetcher,
+        "fetch_chip_snapshot",
+        lambda ticker: {
+            "supported": True,
+            "ticker": ticker,
+            "institutional": pd.DataFrame([
+                {"date": "2026-04-29", "foreign_net_lots": 1, "investment_trust_net_lots": 2, "dealer_net_lots": 3}
+            ]),
+            "margin": pd.DataFrame([
+                {"date": "2026-04-30", "margin_balance": 100, "short_balance": 5}
+            ]),
+            "major_holder": {"date": "2026-04-28", "foreign_holding_pct": 72.34},
+            "source_statuses": {},
+        },
+    )
+
+    result = chip_fetcher.fetch_today("2330.TW")
+
+    assert result["date"] == "2026-04-30"
+
+
+def test_fetch_institutional_trades_skips_probable_taiwan_etf():
+    result = chip_fetcher.fetch_institutional_trades("0050.TW")
+
+    assert result.empty
+
+
+def test_fetch_chip_snapshot_does_not_cache_partial_failure(monkeypatch):
+    monkeypatch.setattr(chip_fetcher, "get_chip_cache", lambda key, ttl_override=None: None)
+    saved = {}
+    monkeypatch.setattr(chip_fetcher, "save_chip_cache", lambda key, value: saved.update({key: value}))
+
+    class DummyChain:
+        def fetch_institutional_history(self, ticker, days):
+            return ChipResult(
+                pd.DataFrame(),
+                SourceStatus("chip_finmind", "unavailable", "HTTP Error 400: Bad Request", last_success_at=1.0),
+            )
+
+        def fetch_margin_history(self, ticker, days):
+            return ChipResult(
+                pd.DataFrame([{"date": "2026-04-30", "margin_balance": 100, "short_balance": 1}]),
+                SourceStatus("chip_twse_margn", "ok", last_success_at=1.0),
+            )
+
+    monkeypatch.setattr(chip_fetcher, "build_default_chain", lambda: DummyChain())
+    monkeypatch.setattr(
+        chip_fetcher,
+        "_safe_major_holder_snapshot",
+        lambda ticker: {
+            "supported": True,
+            "ticker": ticker,
+            "foreign_holding_pct": None,
+            "message": "外資持股資料暫不可用",
+            "source": "chip_finmind",
+        },
+    )
+
+    result = chip_fetcher.fetch_chip_snapshot("2330.TW")
+
+    assert result["source_statuses"]["institutional"]["status"] == "unavailable"
+    assert saved == {}

@@ -7,6 +7,7 @@ from src.core.market_calendar import cache_ttl_seconds
 from src.data.data_source_probe import fetch_text, parse_json_list
 from src.data.price_fetcher import _normalize_df
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
+from src.repositories.source_health_repo import record_source_health
 
 INDEX_TICKERS = {
     "taiex": "^TWII",
@@ -79,6 +80,7 @@ def get_taiex_realtime_breadth() -> dict:
     cache_key = "realtime_breadth"
     cached = get_market_cache(cache_key, ttl_override=30)
     if isinstance(cached, dict) and cached:
+        record_source_health("taiex_realtime", "ok" if cached.get("available") else "unavailable", reason=str(cached.get("message") or ""))
         return cached
 
     result = _fetch_realtime_breadth()
@@ -96,9 +98,11 @@ def _fetch_realtime_breadth() -> dict:
             rows = parse_json_list(fetch_text(url))
             parsed = parse_realtime_breadth_rows(rows)
             if parsed:
+                record_source_health("taiex_realtime", "ok")
                 return parsed
         except Exception:
             continue
+    record_source_health("taiex_realtime", "unavailable", reason="TWSE 即時委買委賣資料暫不可用")
     return {
         "available": False,
         "buy_orders_lots": 0,
@@ -114,8 +118,18 @@ def parse_realtime_breadth_rows(rows: list[dict]) -> dict:
     if not rows:
         return {}
     latest = rows[-1]
-    buy = _first_numeric(latest, ["累積委託買進數量", "CumulativeEntrustedBuyingQuantity", "Cumulative buy order quantity"])
-    sell = _first_numeric(latest, ["累積委託賣出數量", "CumulativeEntrustedSellingQuantity", "Cumulative sales order quantity"])
+    buy = _first_numeric(latest, [
+        "累積委託買進數量",
+        "AccBidVolume",
+        "CumulativeEntrustedBuyingQuantity",
+        "Cumulative buy order quantity",
+    ])
+    sell = _first_numeric(latest, [
+        "累積委託賣出數量",
+        "AccAskVolume",
+        "CumulativeEntrustedSellingQuantity",
+        "Cumulative sales order quantity",
+    ])
     ts = str(latest.get("時間") or latest.get("Time") or latest.get("time") or "")
     if buy is None or sell is None:
         return {}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from src.scheduler.jobs.chip_daily_snapshot import run_chip_daily_snapshot
 from src.scheduler.jobs.daily_scan import run_daily_scan
 from src.scheduler.jobs.price_alerts import run_price_alerts
 from src.scheduler.jobs.weekly_digest import run_weekly_digest
@@ -44,6 +45,17 @@ def build_scheduler(blocking: bool = False):
         hour=5,
         minute=10,
         id="daily_scan_us",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        run_chip_daily_snapshot,
+        "cron",
+        day_of_week="mon-fri",
+        hour=17,
+        minute=30,
+        id="chip_daily_snapshot",
         replace_existing=True,
         max_instances=1,
         coalesce=True,

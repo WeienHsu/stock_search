@@ -31,3 +31,8 @@ def test_margin_trend_chart_contains_margin_trace():
 def test_lots_text_formats_large_values():
     assert chip_panel._lots_text(23_000) == "+2.30萬張"
     assert chip_panel._lots_text(-1200) == "-1,200張"
+
+
+def test_lots_text_uses_dash_for_missing_values():
+    assert chip_panel._lots_text(None) == "—"
+    assert chip_panel._latest_numeric(pd.DataFrame(), "foreign_net_lots", default=None) is None

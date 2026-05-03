@@ -10,6 +10,7 @@ from src.data.twse_fetcher import fetch_institutional_flow, fetch_margin_summary
 from src.ui.components.fear_greed_gauge import build_fear_greed_gauge
 from src.ui.components.index_mini_chart import build_bar_chart, build_line_chart
 from src.ui.components.market_summary import render_market_full_cards
+from src.ui.components.source_health_badge import render_source_health_badge
 
 
 def render() -> None:
@@ -28,6 +29,7 @@ def render() -> None:
         realtime_breadth = _safe_dict(get_taiex_realtime_breadth)
 
     render_market_full_cards(taiex, gtsm, realtime_breadth)
+    render_source_health_badge("taiex_realtime", "即時委買賣")
     st.markdown("---")
     _render_flow_and_fx(usdtwd, institutional, taifex)
     st.markdown("---")

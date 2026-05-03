@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data.chip_fetcher import fetch_chip_snapshot, is_taiwan_ticker
+from src.repositories.chip_snapshot_repo import list_recent_snapshots
 
 
 def render_chip_panel(ticker: str) -> None:
@@ -26,36 +27,139 @@ def render_chip_panel(ticker: str) -> None:
         institutional = data.get("institutional")
         margin = data.get("margin")
         summary = data.get("summary", {})
+        source_statuses = data.get("source_statuses", {})
         if not isinstance(institutional, pd.DataFrame):
             institutional = pd.DataFrame()
         if not isinstance(margin, pd.DataFrame):
             margin = pd.DataFrame()
 
-        _render_summary(summary)
+        _render_summary(summary, institutional, margin)
+        _render_source_statuses(source_statuses)
 
-        col_flow, col_margin = st.columns([1.4, 1])
-        with col_flow:
-            if institutional.empty:
-                st.info("近 5 日法人買賣超資料暫不可用")
-            else:
-                st.plotly_chart(_institutional_flow_chart(institutional), use_container_width=True)
-        with col_margin:
-            if margin.empty:
-                st.info("近 20 日融資融券資料暫不可用")
-            else:
-                st.plotly_chart(_margin_trend_chart(margin), use_container_width=True)
+        history = _snapshot_history(ticker)
+        if len(history) >= 2:
+            col_flow, col_margin = st.columns([1.4, 1])
+            with col_flow:
+                st.plotly_chart(_historical_institutional_chart(history), use_container_width=True)
+            with col_margin:
+                st.plotly_chart(_historical_margin_chart(history), use_container_width=True)
+        else:
+            _render_current_snapshot(institutional, margin, data)
 
 
-def _render_summary(summary: dict) -> None:
+def _render_summary(summary: dict, institutional: pd.DataFrame, margin: pd.DataFrame) -> None:
     cols = st.columns(3)
-    cols[0].metric("外資 5日累計", _lots_text(summary.get("foreign_5d_lots", 0)))
-    cols[1].metric("投信 5日累計", _lots_text(summary.get("investment_trust_5d_lots", 0)))
+    cols[0].metric("外資 5日累計", _lots_text(summary.get("foreign_5d_lots") if not institutional.empty else None))
+    cols[1].metric("投信 5日累計", _lots_text(summary.get("investment_trust_5d_lots") if not institutional.empty else None))
+    margin_change = summary.get("margin_change_lots") if not margin.empty else None
+    margin_change_pct = summary.get("margin_change_pct") if not margin.empty else None
     cols[2].metric(
         "融資增減",
-        _lots_text(summary.get("margin_change_lots", 0)),
-        f"{summary.get('margin_change_pct', 0):+.2f}%",
+        _lots_text(margin_change),
+        _pct_delta_text(margin_change_pct),
     )
     st.caption(f"融資趨勢：{summary.get('margin_trend', '持平')}；資料通常於收盤後更新，盤中可能仍是前一交易日。")
+
+
+def _render_source_statuses(statuses: dict) -> None:
+    if not statuses:
+        return
+    for label, key in [("法人", "institutional"), ("融資", "margin"), ("外資持股", "major_holder")]:
+        status = statuses.get(key) or {}
+        state = str(status.get("status") or "unknown")
+        reason = str(status.get("reason") or "")
+        source_id = str(status.get("source_id") or "")
+        if state == "ok":
+            st.caption(f"{label}：正常（{source_id}）")
+        elif state == "unsupported":
+            st.caption(f"{label}：{reason or '不支援'}")
+        else:
+            st.caption(f"{label}：{reason or '暫時失敗'}")
+
+
+def _snapshot_history(ticker: str) -> pd.DataFrame:
+    rows = list_recent_snapshots(ticker, limit=20)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if "date" not in df.columns:
+        return pd.DataFrame()
+    return df.sort_values("date").reset_index(drop=True)
+
+
+def _historical_institutional_chart(history: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=history["date"],
+        y=pd.to_numeric(history["institutional_foreign"], errors="coerce"),
+        mode="lines+markers",
+        name="外資",
+        line=dict(color="#7DAA92", width=2),
+    ))
+    fig.add_trace(go.Scatter(
+        x=history["date"],
+        y=pd.to_numeric(history["institutional_trust"], errors="coerce"),
+        mode="lines+markers",
+        name="投信",
+        line=dict(color="#6A9E8A", width=2),
+    ))
+    fig.add_trace(go.Scatter(
+        x=history["date"],
+        y=pd.to_numeric(history["institutional_dealer"], errors="coerce"),
+        mode="lines+markers",
+        name="自營商",
+        line=dict(color="#A89070", width=2),
+    ))
+    _apply_chip_layout(fig, "籌碼快照趨勢（張）")
+    fig.update_layout(height=260)
+    return fig
+
+
+def _historical_margin_chart(history: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=history["date"],
+        y=pd.to_numeric(history["margin_balance"], errors="coerce"),
+        mode="lines+markers",
+        name="融資餘額",
+        line=dict(color="#7A9EB5", width=2),
+    ))
+    fig.add_trace(go.Scatter(
+        x=history["date"],
+        y=pd.to_numeric(history["short_balance"], errors="coerce"),
+        mode="lines+markers",
+        name="融券餘額",
+        line=dict(color="#A89070", width=1.5),
+    ))
+    _apply_chip_layout(fig, "籌碼快照趨勢（融資 / 融券）")
+    fig.update_layout(height=260)
+    return fig
+
+
+def _render_current_snapshot(institutional: pd.DataFrame, margin: pd.DataFrame, data: dict) -> None:
+    cols = st.columns(4)
+    cols[0].metric("外資", _lots_text(_latest_numeric(institutional, "foreign_net_lots", default=None)))
+    cols[1].metric("投信", _lots_text(_latest_numeric(institutional, "investment_trust_net_lots", default=None)))
+    margin_balance = _latest_numeric(margin, "margin_balance", default=None)
+    cols[2].metric("融資餘額", "—" if margin_balance is None else f"{margin_balance:,.0f}")
+    cols[3].metric("外資持股", _pct_text(data.get("qfiis_pct")))
+    if institutional.empty and margin.empty:
+        st.info("法人與融資券資料暫不可用")
+        return
+    if institutional.empty:
+        st.info("法人買賣超資料暫不可用或不適用")
+    if margin.empty:
+        st.info("融資券資料暫不可用")
+    if not institutional.empty and not margin.empty:
+        col_flow, col_margin = st.columns([1.4, 1])
+        with col_flow:
+            st.plotly_chart(_institutional_flow_chart(institutional), use_container_width=True)
+        with col_margin:
+            st.plotly_chart(_margin_trend_chart(margin), use_container_width=True)
+    elif not institutional.empty:
+        st.plotly_chart(_institutional_flow_chart(institutional), use_container_width=True)
+    elif not margin.empty:
+        st.plotly_chart(_margin_trend_chart(margin), use_container_width=True)
 
 
 def _institutional_flow_chart(df: pd.DataFrame) -> go.Figure:
@@ -127,8 +231,37 @@ def _apply_chip_layout(fig: go.Figure, title: str) -> None:
     fig.update_yaxes(showgrid=True, gridcolor="#D4CEC8")
 
 
-def _lots_text(value: float) -> str:
+def _lots_text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "—"
     value = float(value or 0)
     if abs(value) >= 10_000:
         return f"{value / 10_000:+.2f}萬張"
     return f"{value:+,.0f}張"
+
+
+def _pct_delta_text(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    try:
+        return f"{float(value):+.2f}%"
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct_text(value: object) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):.2f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _latest_numeric(df: pd.DataFrame, column: str, default: float | None = 0.0) -> float | None:
+    if df.empty or column not in df.columns:
+        return default
+    series = pd.to_numeric(df[column], errors="coerce").dropna()
+    if series.empty:
+        return default
+    return float(series.iloc[-1])

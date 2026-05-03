@@ -5,9 +5,11 @@ from typing import Any
 
 import pandas as pd
 
-from src.data.chip_fetcher import is_taiwan_ticker, ticker_code
+from src.data.chip_data_sources import build_default_chain
+from src.data.chip_utils import is_taiwan_ticker, ticker_code
 from src.data.data_source_probe import SimpleTableParser, fetch_text
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
+from src.repositories.source_health_repo import record_source_health
 
 _DAY = 24 * 3600
 
@@ -16,10 +18,21 @@ def fetch_monthly_revenue(ticker: str, months: int = 12) -> pd.DataFrame:
     if not is_taiwan_ticker(ticker):
         return pd.DataFrame()
     code = ticker_code(ticker)
-    cache_key = f"revenue_{code}_{months}"
+    cache_key = f"revenue_v2_{code}_{months}"
     cached = get_market_cache(cache_key, ttl_override=7 * _DAY)
     if isinstance(cached, pd.DataFrame) and not cached.empty:
+        source = str(cached["source"].iloc[-1]) if "source" in cached.columns else "revenue_mops"
+        if source not in {"revenue_finmind", "revenue_mops"}:
+            source = "revenue_mops"
+        record_source_health(source, "ok")
         return cached
+
+    chain = build_default_chain()
+    finmind = chain.fetch_monthly_revenue(ticker, months)
+    if isinstance(finmind.data, pd.DataFrame) and not finmind.data.empty:
+        df = finmind.data.sort_values("period").reset_index(drop=True)
+        save_market_cache(cache_key, df)
+        return df
 
     rows: list[dict[str, Any]] = []
     current = date.today()
@@ -38,7 +51,11 @@ def fetch_monthly_revenue(ticker: str, months: int = 12) -> pd.DataFrame:
 
     df = pd.DataFrame(rows).sort_values("period").reset_index(drop=True) if rows else pd.DataFrame()
     if not df.empty:
+        df.loc[:, "source"] = "revenue_mops"
         save_market_cache(cache_key, df)
+        record_source_health("revenue_mops", "ok")
+    else:
+        record_source_health("revenue_mops", "unavailable", reason="MOPS monthly revenue unavailable")
     return df
 
 

@@ -4,14 +4,16 @@ import pandas as pd
 import streamlit as st
 
 from src.core.finnhub_mode import MissingFinnhubKey
-from src.data.chip_fetcher import is_taiwan_ticker
+from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker
 from src.data.major_holder_fetcher import fetch_major_holder_snapshot, holder_snapshot_to_frame
 from src.data.news_fetcher import fetch_news
 from src.data.revenue_fetcher import fetch_monthly_revenue
 from src.data.sentiment_analyzer import analyze_sentiment
+from src.repositories.source_health_repo import format_health_summary, get_source_health
 from src.ui.components.chip_panel import render_chip_panel
 from src.ui.components.intraday_tick_chart import render_intraday_tick_chart
 from src.ui.components.news_card import render_news_section
+from src.ui.components.source_health_badge import render_source_health_badge
 
 
 def render_stock_detail_tabs(ticker: str, user_id: str) -> None:
@@ -37,13 +39,19 @@ def _render_revenue_tab(ticker: str) -> None:
     if not is_taiwan_ticker(ticker):
         st.info("月營收資料僅支援台股")
         return
+    if is_probable_taiwan_etf(ticker):
+        st.info("ETF 沒有公司月營收資料")
+        return
     try:
         df = fetch_monthly_revenue(ticker, months=12)
     except Exception as exc:
         st.info(f"月營收資料暫不可用：{exc}")
         return
+    render_source_health_badge("revenue_finmind", "月營收 FinMind")
+    render_source_health_badge("revenue_mops", "月營收 MOPS")
     if df.empty:
         st.info("月營收資料暫不可用")
+        st.caption(_source_health_text(["revenue_finmind", "revenue_mops"]))
         return
     st.dataframe(df[["period", "revenue", "yoy_pct"]], hide_index=True, use_container_width=True)
     st.line_chart(df, x="period", y="revenue", height=220)
@@ -55,8 +63,10 @@ def _render_major_holder_tab(ticker: str) -> None:
         return
     snapshot = fetch_major_holder_snapshot(ticker)
     df = holder_snapshot_to_frame(snapshot)
+    render_source_health_badge("major_holder_qfiis", "外資持股")
     if df.empty:
         st.info(snapshot.get("message", "外資持股資料暫不可用"))
+        st.caption(_source_health_text(["major_holder_qfiis"]))
         return
     st.dataframe(df, hide_index=True, use_container_width=True)
 
@@ -78,3 +88,11 @@ def revenue_frame_for_display(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["period", "revenue", "yoy_pct"])
     return df[["period", "revenue", "yoy_pct"]]
+
+
+def _source_health_text(source_ids: list[str]) -> str:
+    summaries = []
+    for source_id in source_ids:
+        health = get_source_health(source_id)
+        summaries.append(f"{source_id}: {format_health_summary(health)}")
+    return "；".join(summaries)

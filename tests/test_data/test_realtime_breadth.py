@@ -5,8 +5,8 @@ def test_parse_realtime_breadth_rows_extracts_buy_sell_ratio():
     result = parse_realtime_breadth_rows([
         {
             "時間": "09:30",
-            "累積委託買進數量": "1,200",
-            "累積委託賣出數量": "800",
+            "AccBidVolume": "1,200",
+            "AccAskVolume": "800",
         }
     ])
 
