@@ -5,7 +5,11 @@ import streamlit as st
 
 from src.core.finnhub_mode import MissingFinnhubKey
 from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker
-from src.data.major_holder_fetcher import fetch_major_holder_snapshot, holder_snapshot_to_frame
+from src.data.major_holder_fetcher import (
+    fetch_major_holder_snapshot,
+    holder_history_to_frame,
+    holder_snapshot_to_frame,
+)
 from src.data.news_fetcher import fetch_news
 from src.data.revenue_fetcher import fetch_monthly_revenue
 from src.data.sentiment_analyzer import analyze_sentiment
@@ -40,7 +44,8 @@ def _render_revenue_tab(ticker: str) -> None:
         st.info("月營收資料僅支援台股")
         return
     if is_probable_taiwan_etf(ticker):
-        st.info("ETF 沒有公司月營收資料")
+        st.info("此標的為 ETF / 受益憑證（代號以 00 開頭），依規定不公告公司月營收，因此無資料可顯示。")
+        st.caption("若要查看 ETF 規模、淨值、持股，請改看其他面板（規劃中）。")
         return
     try:
         df = fetch_monthly_revenue(ticker, months=12)
@@ -68,7 +73,15 @@ def _render_major_holder_tab(ticker: str) -> None:
         st.info(snapshot.get("message", "外資持股資料暫不可用"))
         st.caption(_source_health_text(["major_holder_qfiis"]))
         return
+    name = snapshot.get("stock_name")
+    if name:
+        st.caption(f"標的：{name}")
     st.dataframe(df, hide_index=True, use_container_width=True)
+    history = holder_history_to_frame(snapshot)
+    if not history.empty and len(history) >= 2:
+        st.markdown("**外資持股比率趨勢**")
+        chart_df = history.rename(columns={"date": "日期", "foreign_holding_pct": "外資持股比率(%)"})
+        st.line_chart(chart_df, x="日期", y="外資持股比率(%)", height=220)
 
 
 def _render_news_tab(ticker: str, user_id: str) -> None:

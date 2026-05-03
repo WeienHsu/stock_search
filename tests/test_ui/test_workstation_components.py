@@ -19,6 +19,20 @@ def test_build_watchlist_table_uses_quote_summary(monkeypatch):
     assert df.iloc[0]["成交"] == 100
 
 
+def test_build_watchlist_table_can_skip_quote_fetch(monkeypatch):
+    import src.ui.components.categorized_watchlist as module
+
+    monkeypatch.setattr(
+        module,
+        "_quote_summary",
+        lambda ticker: (_ for _ in ()).throw(AssertionError("quote should not be fetched")),
+    )
+
+    df = build_watchlist_table([{"ticker": "2330.TW", "name": "台積電"}], include_quotes=False)
+
+    assert df.iloc[0]["成交"] == "—"
+
+
 def test_my_list_category_uses_existing_watchlist(monkeypatch):
     import src.ui.components.categorized_watchlist as module
 

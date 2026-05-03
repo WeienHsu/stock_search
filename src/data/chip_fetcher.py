@@ -5,9 +5,8 @@ from typing import Any
 
 import pandas as pd
 
-from src.data.chip_data_sources.base import ChipResult, SourceStatus
 from src.data.chip_data_sources import build_default_chain
-from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker, market_kind, ticker_code
+from src.data.chip_utils import is_taiwan_ticker, market_kind, ticker_code
 from src.data.data_source_probe import fetch_text, parse_json_list, parse_tpex_table, parse_twse_rwd_table
 from src.repositories.chip_data_cache_repo import get_chip_cache, save_chip_cache
 
@@ -20,19 +19,13 @@ def fetch_chip_snapshot(ticker: str, institutional_days: int = 5, margin_days: i
         return {"supported": False, "ticker": ticker, "market": kind, "message": "僅支援台股"}
 
     code = ticker_code(ticker)
-    cache_key = f"chip_snapshot_v4_{kind}_{code}_{institutional_days}_{margin_days}"
+    cache_key = f"chip_snapshot_v5_{kind}_{code}_{institutional_days}_{margin_days}"
     cached = get_chip_cache(cache_key, ttl_override=_DAY)
     if isinstance(cached, dict) and cached:
         return cached
 
     chain = build_default_chain()
-    if is_probable_taiwan_etf(ticker):
-        institutional_result = ChipResult(
-            pd.DataFrame(),
-            SourceStatus("chip_institutional", "unsupported", "ETF 法人買賣超目前未支援"),
-        )
-    else:
-        institutional_result = chain.fetch_institutional_history(ticker, institutional_days)
+    institutional_result = chain.fetch_institutional_history(ticker, institutional_days)
     margin_result = chain.fetch_margin_history(ticker, margin_days)
     institutional = institutional_result.data if isinstance(institutional_result.data, pd.DataFrame) else pd.DataFrame()
     margin = margin_result.data if isinstance(margin_result.data, pd.DataFrame) else pd.DataFrame()
@@ -60,8 +53,6 @@ def fetch_chip_snapshot(ticker: str, institutional_days: int = 5, margin_days: i
 
 
 def fetch_institutional_trades(ticker: str, days: int = 5) -> pd.DataFrame:
-    if is_probable_taiwan_etf(ticker):
-        return pd.DataFrame()
     chain = build_default_chain()
     result = chain.fetch_institutional_history(ticker, days)
     if isinstance(result.data, pd.DataFrame):

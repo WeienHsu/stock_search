@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 import pandas as pd
 
 from src.data.chip_data_sources.base import ChipResult, SourceStatus
-from src.data.chip_utils import is_taiwan_ticker, ticker_code
+from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker, ticker_code
 from src.data.data_source_probe import fetch_text
 from src.repositories.source_health_repo import record_source_health
 
@@ -72,7 +72,9 @@ class FinMindChipDataSource:
 
     def fetch_monthly_revenue(self, ticker: str, months: int) -> ChipResult:
         if not is_taiwan_ticker(ticker):
-            return self._unsupported("僅支援台股")
+            return self._unsupported("僅支援台股", source_id="revenue_finmind")
+        if is_probable_taiwan_etf(ticker):
+            return self._unsupported("ETF 沒有公司月營收資料", source_id="revenue_finmind")
         code = ticker_code(ticker)
         start_date = (date.today() - timedelta(days=months * 40 + 60)).strftime("%Y-%m-%d")
         end_date = date.today().strftime("%Y-%m-%d")
@@ -80,7 +82,16 @@ class FinMindChipDataSource:
             rows = self._fetch_rows("TaiwanStockMonthRevenue", code, start_date, end_date)
             df = self._monthly_revenue_frame(rows)
             if df.empty:
-                return self._unavailable("FinMind month revenue data unavailable")
+                health = record_source_health("revenue_finmind", "unavailable", reason="FinMind month revenue data unavailable")
+                return ChipResult(
+                    pd.DataFrame(),
+                    self._status(
+                        "unavailable",
+                        "FinMind month revenue data unavailable",
+                        health.get("last_success_at"),
+                        source_id="revenue_finmind",
+                    ),
+                )
             health = record_source_health("revenue_finmind", "ok")
             return ChipResult(df, self._status("ok", "", health.get("last_success_at"), source_id="revenue_finmind"))
         except Exception as exc:
@@ -109,7 +120,7 @@ class FinMindChipDataSource:
         }
         if code:
             params["data_id"] = code
-        token = os.getenv("FINMIND_API_TOKEN", "").strip()
+        token = _clean_token(os.getenv("FINMIND_API_TOKEN", ""))
         if token:
             params["token"] = token
         payload = json.loads(fetch_text(f"{_BASE_URL}?{urlencode(params)}"))
@@ -128,6 +139,11 @@ class FinMindChipDataSource:
             row_date = str(row.get("date") or "").strip()
             if not row_date:
                 continue
+            name = str(row.get("name") or row.get("type") or "").strip()
+            investor_type = _investor_type(name)
+            is_total_row = "三大法人" in name or "總和" in name or "total" in name.lower()
+            if not investor_type and not is_total_row:
+                continue
             bucket = by_date.setdefault(row_date, {
                 "date": row_date,
                 "foreign_net_shares": 0.0,
@@ -136,18 +152,16 @@ class FinMindChipDataSource:
                 "total_institutional_net_shares": 0.0,
                 "source": "FinMind",
             })
-            name = str(row.get("name") or row.get("type") or "").strip()
             buy = _to_float(row.get("buy"))
             sell = _to_float(row.get("sell"))
             net = buy - sell
-            investor_type = _investor_type(name)
             if investor_type == "foreign":
                 bucket["foreign_net_shares"] += net
             elif investor_type == "investment_trust":
                 bucket["investment_trust_net_shares"] += net
             elif investor_type == "dealer":
                 bucket["dealer_net_shares"] += net
-            if "三大法人" in name or "總和" in name or "total" in name.lower():
+            if is_total_row:
                 bucket["total_institutional_net_shares"] = net
         for bucket in by_date.values():
             if not bucket["total_institutional_net_shares"]:
@@ -172,30 +186,71 @@ class FinMindChipDataSource:
                 continue
             records.append({
                 "date": row_date,
-                "margin_buy": _to_float(row.get("MarginPurchaseBuy")),
-                "margin_sell": _to_float(row.get("MarginPurchaseSell")),
-                "margin_balance": _to_float(row.get("MarginPurchaseTodayBalance")),
-                "short_sell": _to_float(row.get("ShortSaleSell")),
-                "short_balance": _to_float(row.get("ShortSaleTodayBalance")),
+                "margin_buy": _to_float_or_none(row.get("MarginPurchaseBuy")),
+                "margin_sell": _to_float_or_none(row.get("MarginPurchaseSell")),
+                "margin_balance": _to_float_or_none(row.get("MarginPurchaseTodayBalance")),
+                "short_sell": _to_float_or_none(row.get("ShortSaleSell")),
+                "short_balance": _to_float_or_none(row.get("ShortSaleTodayBalance")),
                 "source": "FinMind",
             })
-        return pd.DataFrame(records).sort_values("date").reset_index(drop=True) if records else pd.DataFrame()
+        if not records:
+            return pd.DataFrame()
+        df = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
+        if df[["margin_balance", "short_balance"]].isna().all().all():
+            return pd.DataFrame()
+        return df
 
     def _shareholding_snapshot(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not rows:
             return {}
-        latest = max(rows, key=lambda row: str(row.get("date") or ""))
-        pct = _to_float(
-            latest.get("ForeignInvestmentSharesRatio")
-            or latest.get("ForeignInvestmentRemainRatio")
-            or latest.get("foreign_holding_pct")
-        )
+        sorted_rows = sorted(rows, key=lambda row: str(row.get("date") or ""))
+        latest = sorted_rows[-1]
+        pct = _to_float_or_none(latest.get("ForeignInvestmentSharesRatio"))
+        if pct is None:
+            pct = _to_float_or_none(latest.get("foreign_holding_pct"))
+        if pct is None:
+            remain = _to_float_or_none(latest.get("ForeignInvestmentRemainRatio"))
+            pct = (100 - remain) if remain is not None else None
+        if pct is None:
+            return {}
+        prev_pct = None
+        if len(sorted_rows) >= 2:
+            for prior in reversed(sorted_rows[:-1]):
+                prev_pct = _to_float_or_none(prior.get("ForeignInvestmentSharesRatio"))
+                if prev_pct is None:
+                    remain = _to_float_or_none(prior.get("ForeignInvestmentRemainRatio"))
+                    prev_pct = (100 - remain) if remain is not None else None
+                if prev_pct is not None:
+                    break
+        change_pct = round(pct - prev_pct, 4) if prev_pct is not None else None
+        history = [
+            {
+                "date": str(row.get("date") or ""),
+                "foreign_holding_pct": _to_float_or_none(row.get("ForeignInvestmentSharesRatio"))
+                or (
+                    100 - _to_float_or_none(row.get("ForeignInvestmentRemainRatio"))
+                    if _to_float_or_none(row.get("ForeignInvestmentRemainRatio")) is not None
+                    else None
+                ),
+            }
+            for row in sorted_rows
+            if str(row.get("date") or "")
+        ]
+        history = [item for item in history if item["foreign_holding_pct"] is not None]
         return {
             "supported": True,
             "ticker": ticker_code(str(latest.get("stock_id") or latest.get("ticker") or "")),
             "code": ticker_code(str(latest.get("stock_id") or latest.get("ticker") or "")),
+            "stock_name": str(latest.get("stock_name") or "").strip(),
             "date": str(latest.get("date") or ""),
             "foreign_holding_pct": pct,
+            "foreign_holding_pct_prev": prev_pct,
+            "foreign_holding_change_pp": change_pct,
+            "foreign_holding_shares": _to_float_or_none(latest.get("ForeignInvestmentShares")),
+            "foreign_remaining_shares": _to_float_or_none(latest.get("ForeignInvestmentRemainingShares")),
+            "shares_issued": _to_float_or_none(latest.get("NumberOfSharesIssued")),
+            "foreign_upper_limit_pct": _to_float_or_none(latest.get("ForeignInvestmentUpperLimitRatio")),
+            "history": history,
             "source": "FinMind",
         }
 
@@ -234,16 +289,25 @@ class FinMindChipDataSource:
             last_success_at=last_success_at,
         )
 
-    def _unsupported(self, reason: str) -> ChipResult:
-        health = record_source_health(self.source_id, "unsupported", reason=reason)
+    def _unsupported(self, reason: str, *, source_id: str | None = None) -> ChipResult:
+        health_source_id = source_id or self.source_id
+        health = record_source_health(health_source_id, "unsupported", reason=reason)
         return ChipResult(
             pd.DataFrame() if "month" not in reason.lower() else pd.DataFrame(),
-            self._status("unsupported", reason, health.get("last_success_at")),
+            self._status("unsupported", reason, health.get("last_success_at"), source_id=health_source_id),
         )
 
     def _unavailable(self, reason: str) -> ChipResult:
         health = record_source_health(self.source_id, "unavailable", reason=reason)
         return ChipResult(pd.DataFrame(), self._status("unavailable", reason, health.get("last_success_at")))
+
+
+def _clean_token(value: str) -> str:
+    # Tolerate `.env` typos like `FINMIND_API_TOKEN==xxx` (which dotenv parses
+    # as "=xxx") and stray surrounding quotes/whitespace. FinMind rejects such
+    # values with HTTP 400, which silently breaks every chip fetch.
+    cleaned = (value or "").strip().strip('"').strip("'").lstrip("=").strip()
+    return cleaned
 
 
 def _to_float(value: Any) -> float:

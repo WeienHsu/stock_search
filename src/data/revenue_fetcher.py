@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 
 from src.data.chip_data_sources import build_default_chain
-from src.data.chip_utils import is_taiwan_ticker, ticker_code
+from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker, ticker_code
 from src.data.data_source_probe import SimpleTableParser, fetch_text
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
 from src.repositories.source_health_repo import record_source_health
@@ -16,6 +16,9 @@ _DAY = 24 * 3600
 
 def fetch_monthly_revenue(ticker: str, months: int = 12) -> pd.DataFrame:
     if not is_taiwan_ticker(ticker):
+        return pd.DataFrame()
+    if is_probable_taiwan_etf(ticker):
+        record_source_health("revenue_finmind", "unsupported", reason="ETF 沒有公司月營收資料")
         return pd.DataFrame()
     code = ticker_code(ticker)
     cache_key = f"revenue_v2_{code}_{months}"

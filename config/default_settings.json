@@ -70,10 +70,6 @@
     {"ticker": "2317.TW",   "name": "鴻海"},
     {"ticker": "3037.TW",   "name": "欣興電子"},
     {"ticker": "2382.TW",   "name": "廣達電腦"},
-    {"ticker": "0050.TW",   "name": "元大台灣50"},
-    {"ticker": "00922.TW",  "name": "國泰台灣ESG永續高股息"},
-    {"ticker": "00981A.TW", "name": "中信台灣科技優選正2"},
-    {"ticker": "00980A.TW", "name": "中信AI晶片正2"},
-    {"ticker": "6757.TW",   "name": "致茂電子"}
+    {"ticker": "0050.TW",   "name": "元大台灣50"}
   ]
 }

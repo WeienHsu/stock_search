@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from src.data.ticker_utils import normalize_ticker
 from src.data.price_fetcher import fetch_quote
 from src.repositories.watchlist_category_repo import is_primary_watchlist_category, list_categories, list_items
 from src.repositories.watchlist_repo import get_watchlist
@@ -14,27 +15,24 @@ def render_categorized_watchlist(user_id: str) -> str | None:
         st.info("尚未建立分類自選")
         return None
 
+    selected_from_picker = _render_ticker_picker(user_id, categories)
+    selected_from_input = _render_direct_ticker_input()
+    selected_ticker = selected_from_input or selected_from_picker
+
     tabs = st.tabs([category["name"] for category in categories])
-    selected_ticker: str | None = None
     for tab, category in zip(tabs, categories):
         with tab:
             items = _items_for_category(user_id, category)
-            df = build_watchlist_table(items)
+            df = build_watchlist_table(items, include_quotes=False)
             if df.empty:
                 st.caption("此分類尚無股票")
                 continue
-            event = st.dataframe(
+            st.dataframe(
                 df,
                 hide_index=True,
                 use_container_width=True,
-                selection_mode="single-row",
-                on_select="rerun",
                 key=f"categorized_watchlist_{category['id']}",
             )
-            selected = getattr(event, "selection", None)
-            rows = getattr(selected, "rows", []) if selected is not None else []
-            if rows:
-                selected_ticker = str(df.iloc[int(rows[0])]["代碼"])
 
     if selected_ticker:
         st.session_state["workstation_active_ticker"] = selected_ticker
@@ -47,11 +45,11 @@ def _items_for_category(user_id: str, category: dict) -> list[dict]:
     return list_items(user_id, category["id"])
 
 
-def build_watchlist_table(items: list[dict]) -> pd.DataFrame:
+def build_watchlist_table(items: list[dict], *, include_quotes: bool = True) -> pd.DataFrame:
     rows = []
     for item in items:
         ticker = str(item["ticker"]).upper()
-        quote = _quote_summary(ticker)
+        quote = _quote_summary(ticker) if include_quotes else {"close": "—", "change": "—", "change_pct": "—", "volume": "—"}
         rows.append({
             "代碼": ticker,
             "名稱": item.get("name", ""),
@@ -63,6 +61,73 @@ def build_watchlist_table(items: list[dict]) -> pd.DataFrame:
             "PE": "—",
         })
     return pd.DataFrame(rows)
+
+
+def _render_ticker_picker(user_id: str, categories: list[dict]) -> str | None:
+    options = _picker_options(user_id, categories)
+    if not options:
+        return None
+    active = str(st.session_state.get("workstation_active_ticker") or "").upper()
+    tickers = [option["ticker"] for option in options]
+    if active and active not in tickers:
+        options.insert(0, {"ticker": active, "name": "", "category": "目前"})
+        tickers.insert(0, active)
+    index = tickers.index(active) if active in tickers else 0
+    selected = st.selectbox(
+        "選擇股票",
+        options=tickers,
+        index=index,
+        format_func=lambda ticker: _picker_label(ticker, options),
+        key=f"workstation_category_picker_{active or 'default'}",
+    )
+    return str(selected).upper() if selected else None
+
+
+def _render_direct_ticker_input() -> str | None:
+    col_ticker, col_apply = st.columns([3, 1])
+    raw_ticker = col_ticker.text_input(
+        "直接輸入代碼",
+        placeholder="6491.TW / 6491",
+        key="workstation_direct_ticker",
+    )
+    if col_apply.button("套用", key="workstation_direct_ticker_apply", use_container_width=True):
+        ticker = normalize_ticker(raw_ticker)
+        if ticker:
+            return ticker
+        st.warning("請輸入股票代碼")
+    return None
+
+
+def _picker_options(user_id: str, categories: list[dict]) -> list[dict]:
+    seen = set()
+    options = []
+    for category in categories:
+        category_name = str(category.get("name") or "")
+        for item in _items_for_category(user_id, category):
+            ticker = str(item.get("ticker") or "").upper()
+            if not ticker or ticker in seen:
+                continue
+            seen.add(ticker)
+            options.append({
+                "ticker": ticker,
+                "name": item.get("name", ""),
+                "category": category_name,
+            })
+    return options
+
+
+def _picker_label(ticker: str, options: list[dict]) -> str:
+    for option in options:
+        if option["ticker"] == ticker:
+            name = str(option.get("name") or "")
+            category = str(option.get("category") or "")
+            parts = [ticker]
+            if name:
+                parts.append(name)
+            if category:
+                parts.append(f"({category})")
+            return " ".join(parts)
+    return ticker
 
 
 def _quote_summary(ticker: str) -> dict:

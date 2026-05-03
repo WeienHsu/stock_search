@@ -119,10 +119,67 @@ def test_fetch_today_uses_latest_data_date(monkeypatch):
     assert result["date"] == "2026-04-30"
 
 
-def test_fetch_institutional_trades_skips_probable_taiwan_etf():
-    result = chip_fetcher.fetch_institutional_trades("0050.TW")
+def test_fetch_institutional_trades_passes_etf_through_chain(monkeypatch):
+    captured = {}
 
-    assert result.empty
+    class DummyChain:
+        def fetch_institutional_history(self, ticker, days):
+            captured["ticker"] = ticker
+            captured["days"] = days
+            return ChipResult(
+                pd.DataFrame([{"date": "2026-04-30", "foreign_net_lots": 1.0}]),
+                SourceStatus("chip_finmind", "ok", last_success_at=1.0),
+            )
+
+    monkeypatch.setattr(chip_fetcher, "build_default_chain", lambda: DummyChain())
+
+    result = chip_fetcher.fetch_institutional_trades("00981A.TW")
+
+    assert captured == {"ticker": "00981A.TW", "days": 5}
+    assert not result.empty
+
+
+def test_fetch_chip_snapshot_does_not_block_etf_institutional(monkeypatch):
+    monkeypatch.setattr(chip_fetcher, "get_chip_cache", lambda key, ttl_override=None: None)
+    monkeypatch.setattr(chip_fetcher, "save_chip_cache", lambda key, value: None)
+    monkeypatch.setattr(
+        chip_fetcher,
+        "_safe_major_holder_snapshot",
+        lambda ticker: {
+            "supported": True,
+            "ticker": ticker,
+            "foreign_holding_pct": 4.44,
+            "source": "FinMind",
+        },
+    )
+
+    class DummyChain:
+        def fetch_institutional_history(self, ticker, days):
+            return ChipResult(
+                pd.DataFrame([
+                    {
+                        "date": "2026-04-30",
+                        "foreign_net_lots": 1.5,
+                        "investment_trust_net_lots": 0.2,
+                        "dealer_net_lots": 0.0,
+                    }
+                ]),
+                SourceStatus("chip_finmind", "ok", last_success_at=1.0),
+            )
+
+        def fetch_margin_history(self, ticker, days):
+            return ChipResult(
+                pd.DataFrame([{"date": "2026-04-30", "margin_balance": 100, "short_balance": 5}]),
+                SourceStatus("chip_finmind", "ok", last_success_at=1.0),
+            )
+
+    monkeypatch.setattr(chip_fetcher, "build_default_chain", lambda: DummyChain())
+
+    result = chip_fetcher.fetch_chip_snapshot("00981A.TW")
+
+    assert result["supported"] is True
+    assert not result["institutional"].empty
+    assert result["source_statuses"]["institutional"]["status"] == "ok"
 
 
 def test_fetch_chip_snapshot_does_not_cache_partial_failure(monkeypatch):

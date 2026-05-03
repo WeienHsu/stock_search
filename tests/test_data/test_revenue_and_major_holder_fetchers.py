@@ -99,3 +99,45 @@ def test_monthly_revenue_prefers_chain_result(monkeypatch):
 
 def test_holder_snapshot_to_frame_returns_empty_when_missing_value():
     assert major_holder_fetcher.holder_snapshot_to_frame({"foreign_holding_pct": None}).empty
+
+
+def test_holder_snapshot_to_frame_renders_full_breakdown():
+    snapshot = {
+        "foreign_holding_pct": 4.44,
+        "foreign_holding_change_pp": -0.12,
+        "foreign_upper_limit_pct": 100.0,
+        "foreign_holding_shares": 376_206_028,
+        "shares_issued": 8_467_709_000,
+        "date": "2026-04-30",
+        "source": "FinMind",
+    }
+
+    df = major_holder_fetcher.holder_snapshot_to_frame(snapshot)
+
+    rows = {row["項目"]: row["數值"] for row in df.to_dict("records")}
+    assert rows["外資持股比率"] == "4.44%"
+    assert rows["近期變動"] == "-0.12 pp"
+    assert rows["外資投資上限"] == "100.00%"
+    assert rows["資料日期"] == "2026-04-30"
+    assert "外資持股張數" in rows
+    assert "已發行張數" in rows
+
+
+def test_holder_history_to_frame_skips_empty_or_missing_history():
+    assert major_holder_fetcher.holder_history_to_frame({}).empty
+    assert major_holder_fetcher.holder_history_to_frame({"history": []}).empty
+
+
+def test_holder_history_to_frame_returns_sorted_pct_series():
+    snapshot = {
+        "history": [
+            {"date": "2026-03-31", "foreign_holding_pct": 3.0},
+            {"date": "2026-04-30", "foreign_holding_pct": 4.44},
+            {"date": "2026-04-15", "foreign_holding_pct": None},
+        ]
+    }
+
+    df = major_holder_fetcher.holder_history_to_frame(snapshot)
+
+    assert list(df["date"]) == ["2026-03-31", "2026-04-30"]
+    assert list(df["foreign_holding_pct"]) == [3.0, 4.44]
