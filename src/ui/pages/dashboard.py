@@ -22,6 +22,8 @@ from src.strategies.strategy_d import prepare_df, diagnose_strategy_d, diagnose_
 from src.ui.charts.kline_chart import build_combined_chart, render_combined_chart, SignalLayer
 from src.ui.components.chip_panel import render_chip_panel
 from src.ui.components.news_card import render_news_section
+from src.ui.components.sentiment_panel import render_sentiment_panel
+from src.sentiment import aggregate_sentiment
 
 import src.strategies.strategy_d   # ensure registration
 import src.strategies.strategy_kd  # ensure registration
@@ -269,6 +271,11 @@ def render(cfg: dict, user_id: str) -> None:
                 articles, sentiment = [], {"score": 0.0, "label": "neutral", "article_count": 0}
             except Exception:
                 articles, sentiment = [], {"score": 0.0, "label": "neutral", "article_count": 0}
+        try:
+            aggregate = aggregate_sentiment(ticker, articles)
+            render_sentiment_panel(aggregate)
+        except Exception:
+            st.info("跨來源情緒資料暫不可用")
         render_news_section(articles, sentiment, ticker=ticker, user_id=user_id)
 
 

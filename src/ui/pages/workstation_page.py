@@ -40,7 +40,7 @@ def render(cfg: dict, user_id: str) -> None:
         ticker = str(st.session_state.get("workstation_active_ticker") or default_ticker).upper()
         with st.container():
             st.markdown(f"### {ticker} K 線")
-            _render_workstation_kline(ticker)
+            _render_workstation_kline(ticker, cfg)
 
     with right:
         with st.container():
@@ -55,7 +55,7 @@ def render(cfg: dict, user_id: str) -> None:
             render_stock_detail_tabs(ticker, user_id)
 
 
-def _render_workstation_kline(ticker: str) -> None:
+def _render_workstation_kline(ticker: str, cfg: dict) -> None:
     granularity_options = {
         "1m": "1分",
         "5m": "5分",
@@ -69,6 +69,7 @@ def _render_workstation_kline(ticker: str) -> None:
     granularity = st.radio(
         "週期",
         options=list(granularity_options.keys()),
+        index=list(granularity_options.keys()).index("1d"),
         horizontal=True,
         format_func=lambda value: granularity_options[value],
         key=f"workstation_granularity_{ticker}",
@@ -82,21 +83,24 @@ def _render_workstation_kline(ticker: str) -> None:
         st.info("K 線資料暫不可用")
         return
 
-    df = _enrich_chart_df(df)
+    bias_period = int(cfg.get("bias_period", 20))
+    selected_ma_periods = _selected_ma_periods(cfg)
+    df = _enrich_chart_df(df, selected_ma_periods, bias_period)
+    ma_cross_events = _recent_cross_events(df) if cfg.get("show_ma_cross_labels", True) else []
     fig = build_combined_chart(
         df,
         ticker,
-        ma_periods=DEFAULT_MA_PERIODS,
+        ma_periods=selected_ma_periods,
         signal_dates=[],
         sell_dates=[],
-        bias_period=20,
-        show_macd="histogram" in df.columns,
-        show_kd="K" in df.columns,
-        show_bias=False,
+        bias_period=bias_period,
+        show_macd=bool(cfg.get("show_macd", True)) and "histogram" in df.columns,
+        show_kd=bool(cfg.get("show_kd", True)) and "K" in df.columns,
+        show_bias=bool(cfg.get("show_bias", True)),
         signal_layers=[],
-        show_candlestick_patterns=True,
-        show_volume_profile=True,
-        ma_cross_events=_recent_cross_events(df),
+        show_candlestick_patterns=bool(cfg.get("show_candlestick_patterns", True)),
+        show_volume_profile=bool(cfg.get("show_volume_profile", False)),
+        ma_cross_events=ma_cross_events,
         granularity=granularity,
         uirevision=f"workstation_{ticker}_{granularity}",
     )
@@ -108,8 +112,15 @@ def _render_workstation_kline(ticker: str) -> None:
     )
 
 
-def _enrich_chart_df(df: pd.DataFrame) -> pd.DataFrame:
-    enriched = add_ma(df, DEFAULT_MA_PERIODS)
+def _selected_ma_periods(cfg: dict) -> list[int]:
+    raw_periods = cfg.get("ma_periods") or [5, 20, 60]
+    selected = sorted({int(period) for period in raw_periods if int(period) > 0})
+    return selected or [5, 20, 60]
+
+
+def _enrich_chart_df(df: pd.DataFrame, ma_periods: list[int], bias_period: int) -> pd.DataFrame:
+    warmup_periods = sorted(set(DEFAULT_MA_PERIODS) | set(ma_periods))
+    enriched = add_ma(df, warmup_periods)
     try:
         enriched = add_macd(enriched)
     except ValueError:
@@ -119,7 +130,7 @@ def _enrich_chart_df(df: pd.DataFrame) -> pd.DataFrame:
     except ValueError:
         pass
     try:
-        enriched = add_bias(enriched, 20)
+        enriched = add_bias(enriched, bias_period)
     except ValueError:
         pass
     return enriched

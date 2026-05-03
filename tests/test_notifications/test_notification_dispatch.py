@@ -1,6 +1,7 @@
 from src.notifications import base
 from src.notifications.email import EmailChannel
 from src.notifications.inbox import InboxChannel
+from src.notifications.line_messaging import LineMessagingChannel
 from src.notifications.telegram import TelegramChannel
 
 
@@ -40,3 +41,20 @@ def test_send_notification_does_not_duplicate_requested_inbox(monkeypatch):
 
     assert [result.channel for result in results] == ["inbox"]
     assert sent == ["Subject"]
+
+
+def test_send_notification_treats_line_as_external_success(monkeypatch):
+    sent = []
+
+    monkeypatch.setattr(base, "channels_for", lambda user_id, event_type: ["line"])
+    monkeypatch.setattr(LineMessagingChannel, "send", lambda self, *args, **kwargs: True)
+    monkeypatch.setattr(
+        InboxChannel,
+        "send",
+        lambda self, user_id, subject, body, severity="info": sent.append(subject) or True,
+    )
+
+    results = base.send_notification("user-1", "Subject", "Body")
+
+    assert [result.channel for result in results] == ["line"]
+    assert sent == []

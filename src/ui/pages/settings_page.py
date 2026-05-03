@@ -349,8 +349,15 @@ def _render_notification_settings(user_id: str) -> None:
     telegram_chat_id = col_chat.text_input("Telegram chat_id", value=str(settings.get("telegram_chat_id") or ""), key="notify_telegram_chat")
     telegram_token = col_token.text_input("Telegram bot token（留空表示不更換）", type="password", key="notify_telegram_token")
 
+    st.markdown("#### LINE Messaging API")
+    line_enabled = st.checkbox("啟用 LINE Messaging API", value=bool(settings.get("line_enabled")), key="notify_line_enabled")
+    col_line_target, col_line_token = st.columns(2)
+    line_user_id = col_line_target.text_input("LINE user_id / group_id", value=str(settings.get("line_user_id") or ""), key="notify_line_user")
+    line_token = col_line_token.text_input("Channel access token（留空表示不更換）", type="password", key="notify_line_token")
+    st.caption("LINE Notify 已終止；此處使用 LINE Official Account Messaging API push message。")
+
     st.markdown("#### 通道對映")
-    channel_options = ["inbox", "email", "telegram"]
+    channel_options = ["inbox", "email", "telegram", "line"]
     price_channels = st.multiselect(
         "價格警示通道",
         channel_options,
@@ -381,6 +388,8 @@ def _render_notification_settings(user_id: str) -> None:
             "smtp_use_tls": bool(smtp_use_tls),
             "telegram_enabled": telegram_enabled,
             "telegram_chat_id": telegram_chat_id.strip(),
+            "line_enabled": line_enabled,
+            "line_user_id": line_user_id.strip(),
             "inbox_enabled": True,
             "price_alert_channels": price_channels or ["inbox"],
             "strategy_alert_channels": strategy_channels or ["inbox"],
@@ -390,6 +399,8 @@ def _render_notification_settings(user_id: str) -> None:
             set_secret(user_id, "smtp_password", smtp_password.strip())
         if telegram_token.strip():
             set_secret(user_id, "telegram_bot_token", telegram_token.strip())
+        if line_token.strip():
+            set_secret(user_id, "line_channel_access_token", line_token.strip())
         st.success("通知設定已儲存")
         st.rerun()
 

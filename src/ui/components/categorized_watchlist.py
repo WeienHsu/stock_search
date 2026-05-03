@@ -5,6 +5,7 @@ import streamlit as st
 
 from src.data.price_fetcher import fetch_quote
 from src.repositories.watchlist_category_repo import list_categories, list_items
+from src.repositories.watchlist_repo import get_watchlist
 
 
 def render_categorized_watchlist(user_id: str) -> str | None:
@@ -17,7 +18,7 @@ def render_categorized_watchlist(user_id: str) -> str | None:
     selected_ticker: str | None = None
     for tab, category in zip(tabs, categories):
         with tab:
-            items = list_items(user_id, category["id"])
+            items = _items_for_category(user_id, category)
             df = build_watchlist_table(items)
             if df.empty:
                 st.caption("此分類尚無股票")
@@ -38,6 +39,12 @@ def render_categorized_watchlist(user_id: str) -> str | None:
     if selected_ticker:
         st.session_state["workstation_active_ticker"] = selected_ticker
     return selected_ticker
+
+
+def _items_for_category(user_id: str, category: dict) -> list[dict]:
+    if category.get("name") == "我的清單":
+        return get_watchlist(user_id)
+    return list_items(user_id, category["id"])
 
 
 def build_watchlist_table(items: list[dict]) -> pd.DataFrame:

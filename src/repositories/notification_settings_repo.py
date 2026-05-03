@@ -16,6 +16,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "smtp_use_tls": True,
     "telegram_enabled": False,
     "telegram_chat_id": "",
+    "line_enabled": False,
+    "line_user_id": "",
     "inbox_enabled": True,
     "price_alert_channels": ["inbox"],
     "strategy_alert_channels": ["inbox"],
@@ -46,6 +48,8 @@ def channels_for(user_id: str, event_type: str) -> list[str]:
         if channel == "email" and settings.get("email_enabled"):
             enabled.append(channel)
         elif channel == "telegram" and settings.get("telegram_enabled"):
+            enabled.append(channel)
+        elif channel == "line" and settings.get("line_enabled"):
             enabled.append(channel)
         elif channel == "inbox" and settings.get("inbox_enabled", True):
             enabled.append(channel)

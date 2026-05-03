@@ -22,11 +22,13 @@ def send_notification(
 ) -> list[NotificationResult]:
     from src.notifications.email import EmailChannel
     from src.notifications.inbox import InboxChannel
+    from src.notifications.line_messaging import LineMessagingChannel
     from src.notifications.telegram import TelegramChannel
 
     channel_map = {
         "email": EmailChannel(),
         "telegram": TelegramChannel(),
+        "line": LineMessagingChannel(),
         "inbox": InboxChannel(),
     }
     requested = channels_for(user_id, event_type)
@@ -44,7 +46,7 @@ def send_notification(
             results.append(NotificationResult(name, False, str(exc)))
 
     external_success = any(
-        result.success and result.channel in {"email", "telegram"}
+        result.success and result.channel in {"email", "telegram", "line"}
         for result in results
     )
     inbox_requested = any(result.channel == "inbox" for result in results)

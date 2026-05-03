@@ -26,6 +26,8 @@ def render_sidebar(user_id: str) -> dict:
     """Render sidebar and return a config dict with all user selections."""
     from src.repositories.preferences_repo import get_preferences, save_preferences
     from src.core.strategy_registry import list_strategies
+    from src.repositories.watchlist_repo import get_watchlist
+    from src.ui.components.sidebar_search import build_search_candidates, format_candidate, fuzzy_ticker_matches
 
     defaults = _load_defaults()
     prefs = get_preferences(user_id)
@@ -52,6 +54,30 @@ def render_sidebar(user_id: str) -> dict:
     st.sidebar.markdown("---")
 
     # ── Ticker input ──
+    st.sidebar.markdown("**快速搜尋**")
+    candidates = build_search_candidates(get_watchlist(user_id), defaults.get("watchlist_defaults", []))
+    search_query = st.sidebar.text_input(
+        "搜尋股票",
+        placeholder="輸入代號或名稱",
+        key="sidebar_quick_search",
+        label_visibility="collapsed",
+    )
+    matches = fuzzy_ticker_matches(search_query, candidates)
+    if matches:
+        selected_candidate = st.sidebar.selectbox(
+            "搜尋結果",
+            matches,
+            format_func=format_candidate,
+            key="sidebar_quick_search_result",
+            label_visibility="collapsed",
+        )
+        if st.sidebar.button("開啟 Dashboard", use_container_width=True, key="btn_open_dashboard_search"):
+            st.session_state["_pending_nav_page"] = "📊 Dashboard"
+            st.session_state["_pending_ticker"] = selected_candidate["ticker"]
+            st.rerun()
+    elif search_query.strip():
+        st.sidebar.caption("找不到符合的自選股")
+
     nav_ticker = normalize_query_ticker()
     if nav_ticker and nav_ticker != st.session_state.get("_applied_query_ticker"):
         st.session_state["sidebar_ticker"] = nav_ticker
