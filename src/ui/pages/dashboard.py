@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -353,7 +354,13 @@ def _render_ma_analysis_panel(df_full: pd.DataFrame) -> None:
         col_score, col_month, col_trend = st.columns([1, 1, 1])
         col_score.metric("多頭排列", summary["stars"], f"{summary['score']} / 4")
         col_month.metric("月線 > 季線", "是" if summary["month_above_quarter"] else "否")
-        col_trend.metric("趨勢", trend_label(trend["trend"]))
+        
+        trend_help = (
+            "多頭 (Uptrend)：最近兩個波段出現「高點過前高 (Higher High)」且「低點不破前低 (Higher Low)」\n\n"
+            "空頭 (Downtrend)：最近兩個波段出現「高點不過前高 (Lower High)」且「低點破前低 (Lower Low)」\n\n"
+            "盤整 (Sideways)：不符合上述兩者，屬於震盪洗盤格局"
+        )
+        col_trend.metric("趨勢", trend_label(trend["trend"]), help=trend_help)
 
         direction_cols = st.columns(6)
         arrow_map = {"上行": "↑", "下彎": "↓", "持平": "→"}
@@ -363,8 +370,14 @@ def _render_ma_analysis_panel(df_full: pd.DataFrame) -> None:
 
         hook = summary.get("hook_forecast_20", [])
         if hook:
+            st.caption("未來日 MA20 扣抵")
             hook_df = pd.DataFrame({"未來日": [f"D+{i}" for i in range(1, len(hook) + 1)], "MA20扣抵": hook})
-            st.line_chart(hook_df, x="未來日", y="MA20扣抵", height=140)
+            # 使用 altair 取代 st.line_chart，設定 zero=False 讓 Y 軸根據數據自動縮放
+            chart = alt.Chart(hook_df).mark_line(point=True).encode(
+                x=alt.X("未來日", sort=None, title=None),
+                y=alt.Y("MA20扣抵", scale=alt.Scale(zero=False), title=None)
+            ).properties(height=140)
+            st.altair_chart(chart, use_container_width=True)
 
         recent_crosses = summary.get("recent_crosses", [])
         if recent_crosses:

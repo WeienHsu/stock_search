@@ -83,7 +83,7 @@ def _apply_layout(fig: go.Figure, title: str = "") -> None:
         font=dict(color=P.TEXT_PRIMARY, size=12),
         title=dict(text=title, font=dict(size=15, color=P.TEXT_PRIMARY)),
         legend=dict(bgcolor=P.BACKGROUND, bordercolor=P.BORDER, borderwidth=1, font=dict(size=11)),
-        margin=dict(l=10, r=10, t=40, b=10),
+        margin=dict(l=55, r=20, t=40, b=10),
         hovermode="x",
     )
     fig.update_xaxes(
@@ -91,7 +91,7 @@ def _apply_layout(fig: go.Figure, title: str = "") -> None:
         showspikes=True, spikemode="across", spikesnap="cursor",
         spikethickness=1, spikedash="solid", spikecolor="#888",
     )
-    fig.update_yaxes(showgrid=True, gridcolor=P.BORDER, zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor=P.BORDER, zeroline=False, automargin=True)
 
 
 # ── Trace builders ──
@@ -106,7 +106,7 @@ def _main_traces(
     traces.append(go.Candlestick(
         x=df["date"],
         open=df["open"], high=df["high"], low=df["low"], close=df["close"],
-        increasing_line_color=P.GREEN, decreasing_line_color=P.RED,
+        increasing_line_color=P.RED, decreasing_line_color=P.GREEN,
         name="K線", showlegend=False,
     ))
     for n in sorted(ma_periods):
@@ -140,7 +140,7 @@ def _signal_traces_below(
 
 def _macd_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
     P = _get_palette()
-    colors = [P.GREEN if v >= 0 else P.RED for v in df["histogram"].fillna(0)]
+    colors = [P.RED if v >= 0 else P.GREEN for v in df["histogram"].fillna(0)]
     return [
         go.Bar(x=df["date"], y=df["histogram"], marker_color=colors, name="Histogram", showlegend=False),
         go.Scatter(x=df["date"], y=df["macd_line"], mode="lines", line=dict(color=P.BLUE, width=1.5), name="MACD"),
@@ -161,7 +161,7 @@ def _bias_traces(df: pd.DataFrame, period: int) -> list[go.BaseTraceType]:
     col = f"bias_{period}"
     if col not in df.columns:
         return []
-    colors = [P.GREEN if v >= 0 else P.RED for v in df[col].fillna(0)]
+    colors = [P.RED if v >= 0 else P.GREEN for v in df[col].fillna(0)]
     return [
         go.Bar(x=df["date"], y=df[col], marker_color=colors, name=f"Bias {period}"),
     ]
@@ -174,8 +174,8 @@ def _candlestick_pattern_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
         return []
 
     color_map = {
-        "bullish": P.GREEN,
-        "bearish": P.RED,
+        "bullish": P.RED,
+        "bearish": P.GREEN,
         "neutral": P.TEXT_SECONDARY,
     }
     traces = []
@@ -310,8 +310,8 @@ def build_combined_chart(
         elif panel == "kd":
             for trace in _kd_traces(df):
                 fig.add_trace(trace, row=row_idx, col=1)
-            fig.add_hline(y=80, line_color=P.RED, line_dash="dash", line_width=1, row=row_idx, col=1)
-            fig.add_hline(y=20, line_color=P.GREEN, line_dash="dash", line_width=1, row=row_idx, col=1)
+            fig.add_hline(y=80, line_color=P.GREEN, line_dash="dash", line_width=1, row=row_idx, col=1)
+            fig.add_hline(y=20, line_color=P.RED, line_dash="dash", line_width=1, row=row_idx, col=1)
             fig.update_yaxes(range=[0, 100], row=row_idx, col=1)
         elif panel == "bias":
             for trace in _bias_traces(df, bias_period):
@@ -438,7 +438,7 @@ def _volume_profile_overlay(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
     for idx, zone in enumerate(top_zones):
         price = float(zone["price"])
         is_poc = price == profile.get("poc_price")
-        color = P.RED if price > current_close else P.GREEN
+        color = P.GREEN if price > current_close else P.RED
         width = 1.2 + (float(zone["volume"]) / max_volume) * 3.0
         shapes.append(dict(
             type="line",
@@ -616,8 +616,8 @@ def build_kd_chart(df: pd.DataFrame) -> go.Figure:
     for trace in _kd_traces(df):
         fig.add_trace(trace)
     _apply_layout(fig, title="KD")
-    fig.add_hline(y=80, line_color=P.RED,   line_dash="dash", line_width=1, annotation_text="80")
-    fig.add_hline(y=20, line_color=P.GREEN, line_dash="dash", line_width=1, annotation_text="20")
+    fig.add_hline(y=80, line_color=P.GREEN, line_dash="dash", line_width=1, annotation_text="80")
+    fig.add_hline(y=20, line_color=P.RED,   line_dash="dash", line_width=1, annotation_text="20")
     fig.update_yaxes(range=[0, 100])
     return fig
 
