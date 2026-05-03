@@ -20,6 +20,7 @@ MA_COLORS = {
     20:  "#E8A45A",
     60:  "#5B9BD5",
     120: "#A87ECC",
+    240: "#7E8A98",
 }
 
 PLOTLY_THEME = {

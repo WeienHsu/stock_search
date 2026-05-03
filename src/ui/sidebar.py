@@ -61,6 +61,10 @@ def render_sidebar(user_id: str) -> dict:
         placeholder="e.g. 2330.TW / TSLA",
         key="sidebar_ticker",
     ).strip().upper()
+    if st.sidebar.button("開啟綜合看盤", use_container_width=True):
+        st.session_state["_pending_nav_page"] = "🖥️ 綜合看盤"
+        st.session_state["_pending_ticker"] = ticker
+        st.rerun()
 
     # ── Time period ──
     _avail_periods = defaults["ui"]["available_periods"]
@@ -71,6 +75,25 @@ def render_sidebar(user_id: str) -> dict:
         options=_avail_periods,
         index=_period_idx,
         horizontal=True,
+    )
+
+    granularity_options = {
+        "1m": "1分",
+        "5m": "5分",
+        "15m": "15分",
+        "30m": "30分",
+        "60m": "60分",
+        "1d": "日",
+        "1wk": "週",
+        "1mo": "月",
+    }
+    kline_granularity = st.sidebar.selectbox(
+        "K線週期",
+        options=list(granularity_options.keys()),
+        index=list(granularity_options.keys()).index(prefs.get("kline_granularity", "1d"))
+        if prefs.get("kline_granularity", "1d") in granularity_options
+        else 5,
+        format_func=lambda value: granularity_options[value],
     )
 
     st.sidebar.markdown("---")
@@ -170,6 +193,9 @@ def render_sidebar(user_id: str) -> dict:
     show_kd   = st.sidebar.checkbox("KD",   value=prefs.get("show_kd",   True))
     show_bias = st.sidebar.checkbox("乖離率", value=prefs.get("show_bias", True))
     show_news = st.sidebar.checkbox("新聞情緒", value=prefs.get("show_news", True))
+    show_candlestick_patterns = st.sidebar.checkbox("K線形態", value=prefs.get("show_candlestick_patterns", True))
+    show_volume_profile = st.sidebar.checkbox("Volume Profile", value=prefs.get("show_volume_profile", False))
+    show_ma_cross_labels = st.sidebar.checkbox("MA交叉標註", value=prefs.get("show_ma_cross_labels", True))
 
     bias_period = st.sidebar.slider(
         "乖離率週期",
@@ -183,7 +209,7 @@ def render_sidebar(user_id: str) -> dict:
     st.sidebar.markdown("**MA 均線**")
     ma_periods = st.sidebar.multiselect(
         "顯示均線",
-        options=[5, 10, 20, 60, 120],
+        options=[5, 10, 20, 60, 120, 240],
         default=prefs.get("ma_periods", [5, 20, 60]),
     )
 
@@ -193,6 +219,7 @@ def render_sidebar(user_id: str) -> dict:
     return {
         "ticker": ticker,
         "period": period,
+        "kline_granularity": kline_granularity,
         "active_strategies": active_strategies,
         "strategy_d": {
             "kd_window": buy_kd_window,
@@ -227,6 +254,9 @@ def render_sidebar(user_id: str) -> dict:
         "show_kd": show_kd,
         "show_bias": show_bias,
         "show_news": show_news,
+        "show_candlestick_patterns": show_candlestick_patterns,
+        "show_volume_profile": show_volume_profile,
+        "show_ma_cross_labels": show_ma_cross_labels,
         "bias_period": int(bias_period),
         "ma_periods": ma_periods,
     }

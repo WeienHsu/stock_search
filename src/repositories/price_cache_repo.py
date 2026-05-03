@@ -5,8 +5,9 @@ _backend = PickleBackend(subdir="prices")
 _TTL = 6 * 3600  # 6 hours
 
 
-def get_price_cache(key: str) -> pd.DataFrame | None:
-    if not _backend.is_fresh("global", key, ttl_seconds=_TTL):
+def get_price_cache(key: str, ttl_override: int | None = None) -> pd.DataFrame | None:
+    ttl_seconds = ttl_override if ttl_override is not None else _TTL
+    if not _backend.is_fresh("global", key, ttl_seconds=ttl_seconds):
         return None
     return _backend.get("global", key)
 

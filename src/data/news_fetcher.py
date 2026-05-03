@@ -3,11 +3,12 @@ from datetime import datetime, timedelta
 import finnhub
 
 from src.core.finnhub_mode import resolve_api_key
+from src.core.market_calendar import cache_ttl_seconds
 from src.repositories.news_cache_repo import get_news_cache, save_news_cache
 
 
 def fetch_news(ticker: str, user_id: str) -> list[dict]:
-    cached = get_news_cache(ticker)
+    cached = get_news_cache(ticker, ttl_override=cache_ttl_seconds(ticker, "news"))
     if cached is not None:
         return cached
 

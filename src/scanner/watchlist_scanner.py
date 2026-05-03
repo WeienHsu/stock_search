@@ -5,6 +5,9 @@ import pandas as pd
 from src.core.strategy_registry import get as get_strategy
 from src.data.price_fetcher import fetch_prices_for_strategy
 from src.data.ticker_utils import normalize_ticker
+from src.indicators.ma import add_ma
+from src.indicators.ma_analysis import DEFAULT_MA_PERIODS, ma_alignment_score
+from src.analysis.trend_detector import detect_hh_hl, trend_label
 
 _GREEN_DAYS = 3
 _YELLOW_DAYS = 90
@@ -35,6 +38,10 @@ def scan_watchlist(
                 continue
 
             current_close = round(float(df["close"].iloc[-1]), 2)
+            df_ma = add_ma(df, DEFAULT_MA_PERIODS)
+            ma_score = ma_alignment_score(df_ma, DEFAULT_MA_PERIODS)
+            month_above_quarter = _latest_ma_value(df_ma, 20) > _latest_ma_value(df_ma, 60)
+            trend = trend_label(detect_hh_hl(df_ma.tail(180), pivot_window=5)["trend"])
             signals = strategy.compute(df, strategy_params)
 
             buy_signals = [s for s in signals if s.signal_type == "buy"]
@@ -57,6 +64,10 @@ def scan_watchlist(
                 "last_buy_date": last_buy_date,
                 "last_sell_date": last_sell_date,
                 "current_close": current_close,
+                "ma_bullish_score": ma_score,
+                "bullish_alignment": ma_score >= 3,
+                "month_above_quarter": bool(month_above_quarter),
+                "trend": trend,
                 "buy_status": buy_status,
                 "sell_status": sell_status,
             })
@@ -93,5 +104,17 @@ def _error_row(ticker: str, name: str, err: str) -> dict:
         "signal": False, "buy_signal": False, "sell_signal": False,
         "last_signal_date": "—", "last_buy_date": "—", "last_sell_date": "—",
         "current_close": 0.0,
+        "ma_bullish_score": 0,
+        "bullish_alignment": False,
+        "month_above_quarter": False,
+        "trend": "—",
         "buy_status": f"❌ {err}", "sell_status": "—",
     }
+
+
+def _latest_ma_value(df: pd.DataFrame, period: int) -> float:
+    col = f"MA_{period}"
+    if col not in df.columns:
+        return float("nan")
+    values = pd.to_numeric(df[col], errors="coerce").dropna()
+    return float(values.iloc[-1]) if not values.empty else float("nan")

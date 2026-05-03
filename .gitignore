@@ -46,4 +46,7 @@ nltk_data/
 .idea/
 *.swp
 *~
+
+# ── Documentation / Plans ──
+docs/
 PLAN.md

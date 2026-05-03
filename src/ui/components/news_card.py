@@ -2,10 +2,18 @@ from datetime import datetime
 
 import streamlit as st
 
+from src.ai.prompts.news_synthesizer import generate_news_summary
+from src.ai.provider_chain import build_default_chain
+from src.ai.providers.base import AIProviderError, MissingAIProviderConfig
 from config.morandi_palette import GREEN, RED
 
 
-def render_news_section(articles: list[dict], sentiment: dict) -> None:
+def render_news_section(
+    articles: list[dict],
+    sentiment: dict,
+    ticker: str | None = None,
+    user_id: str | None = None,
+) -> None:
     score = sentiment.get("score", 0.0)
     label = sentiment.get("label", "neutral")
     count = sentiment.get("article_count", 0)
@@ -27,6 +35,9 @@ def render_news_section(articles: list[dict], sentiment: dict) -> None:
     if not articles:
         st.caption("無最新新聞")
         return
+
+    if ticker and user_id:
+        _render_ai_news_summary(ticker, user_id, articles, sentiment)
 
     for art in articles[:5]:
         ts = art.get("datetime", 0)
@@ -50,3 +61,25 @@ def render_news_section(articles: list[dict], sentiment: dict) -> None:
                 f'</div>',
                 unsafe_allow_html=True,
             )
+
+
+def _render_ai_news_summary(ticker: str, user_id: str, articles: list[dict], sentiment: dict) -> None:
+    key = f"ai_news_summary_{ticker}"
+    if st.button("🤖 新聞摘要", key=f"btn_ai_news_{ticker}", help="用已設定的 AI provider 摘要近期新聞"):
+        with st.spinner("產生新聞摘要…"):
+            try:
+                chain = build_default_chain(user_id)
+                st.session_state[key] = generate_news_summary(chain, ticker, articles, sentiment)
+            except MissingAIProviderConfig:
+                st.session_state[key] = ""
+                st.info("尚未設定 AI API key，可至設定頁新增 Anthropic、Gemini 或 OpenAI key。")
+            except AIProviderError as exc:
+                st.session_state[key] = ""
+                st.error(f"AI 新聞摘要失敗：{exc}")
+            except Exception as exc:
+                st.session_state[key] = ""
+                st.error(f"AI 新聞摘要失敗：{exc}")
+
+    if st.session_state.get(key):
+        with st.expander("AI 新聞摘要", expanded=True):
+            st.markdown(st.session_state[key])

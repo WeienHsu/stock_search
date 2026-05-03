@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   app:
     build: .
@@ -10,14 +8,12 @@ services:
       - "8501:8501"
     env_file:
       - .env
+    environment:
+      # The long-running worker service owns scheduled jobs in compose mode.
+      ENABLE_STREAMLIT_SCHEDULER: "0"
     volumes:
-      # ── Persistent data volumes ──
-      # User data (watchlist, settings, preferences) → never lost on restart
-      - stock_user_data:/app/data/users
-      # Price cache (pickle files + .meta TTL markers)
-      - stock_price_cache:/app/data/cache/prices
-      # News cache (JSON files)
-      - stock_news_cache:/app/data/cache/news
+      # One shared runtime volume keeps auth.db, users.db, alerts.db, settings, and caches together.
+      - stock_data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
@@ -25,10 +21,21 @@ services:
       retries: 3
       start_period: 15s
 
+  worker:
+    image: stock-intelligence:latest
+    container_name: stock_intelligence_worker
+    restart: unless-stopped
+    command: ["python", "-m", "src.scheduler.worker"]
+    healthcheck:
+      disable: true
+    env_file:
+      - .env
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - stock_data:/app/data
+
 volumes:
-  stock_user_data:
-    driver: local
-  stock_price_cache:
-    driver: local
-  stock_news_cache:
+  stock_data:
     driver: local

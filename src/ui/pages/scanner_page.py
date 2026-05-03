@@ -23,6 +23,8 @@ _SORT_OPTIONS = {
     "最近買進日": "last_buy_date",
     "賣出狀態": "sell_status",
     "最近賣出日": "last_sell_date",
+    "多頭排列": "ma_bullish_score",
+    "趨勢": "trend",
 }
 
 
@@ -127,14 +129,14 @@ def _sort_results(result_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _render_result_rows(result_df: pd.DataFrame) -> None:
-    header = st.columns([1.1, 2.0, 1.0, 1.5, 1.3, 1.5, 1.3])
-    labels = ["代號", "名稱", "現價", "買進狀態", "最近買進日", "賣出狀態", "最近賣出日"]
+    header = st.columns([1.0, 1.7, 0.9, 1.3, 1.1, 1.3, 1.1, 0.9, 0.8, 0.8])
+    labels = ["代號", "名稱", "現價", "買進狀態", "最近買進日", "賣出狀態", "最近賣出日", "多頭排列", "月>季", "趨勢"]
     for col, label in zip(header, labels):
         col.markdown(f"**{label}**")
 
     for idx, row in result_df.iterrows():
         ticker = str(row["ticker"])
-        cols = st.columns([1.1, 2.0, 1.0, 1.5, 1.3, 1.5, 1.3])
+        cols = st.columns([1.0, 1.7, 0.9, 1.3, 1.1, 1.3, 1.1, 0.9, 0.8, 0.8])
         cols[0].button(
             ticker,
             key=f"scanner_open_{idx}_{ticker}",
@@ -148,6 +150,10 @@ def _render_result_rows(result_df: pd.DataFrame) -> None:
         cols[4].markdown(str(row.get("last_buy_date", "—")))
         cols[5].markdown(str(row.get("sell_status", "—")))
         cols[6].markdown(str(row.get("last_sell_date", "—")))
+        score = int(row.get("ma_bullish_score", 0) or 0)
+        cols[7].markdown(("✅" if bool(row.get("bullish_alignment", False)) else "❌") + f" {score}/4")
+        cols[8].markdown("✅" if bool(row.get("month_above_quarter", False)) else "❌")
+        cols[9].markdown(str(row.get("trend", "—")))
 
 
 def _queue_dashboard_nav(ticker: str) -> None:

@@ -5,16 +5,22 @@ import streamlit as st
 
 from src.core.finnhub_mode import MissingFinnhubKey
 from src.core.strategy_registry import get as get_strategy
+from src.ai.prompts.signal_explainer import generate_signal_explanation
+from src.ai.provider_chain import build_default_chain
+from src.ai.providers.base import AIProviderError, MissingAIProviderConfig
 from src.data.news_fetcher import fetch_news
-from src.data.price_fetcher import fetch_prices_for_strategy
+from src.data.price_fetcher import fetch_prices_by_interval, fetch_prices_for_strategy
 from src.data.sentiment_analyzer import analyze_sentiment
 from src.data.ticker_utils import normalize_ticker
 from src.indicators.bias import add_bias
 from src.indicators.kd import add_kd
 from src.indicators.ma import add_ma
+from src.indicators.ma_analysis import DEFAULT_MA_PERIODS, ma_cross_signal, summarize_ma_state
 from src.indicators.macd import add_macd
+from src.analysis.trend_detector import detect_hh_hl, detect_neckline, trend_label
 from src.strategies.strategy_d import prepare_df, diagnose_strategy_d, diagnose_strategy_d_sell
 from src.ui.charts.kline_chart import build_combined_chart, render_combined_chart, SignalLayer
+from src.ui.components.chip_panel import render_chip_panel
 from src.ui.components.news_card import render_news_section
 
 import src.strategies.strategy_d   # ensure registration
@@ -70,7 +76,9 @@ def render(cfg: dict, user_id: str) -> None:
     sd_params = cfg["strategy_d"]
     failed_indicators: list[str] = []
 
-    df_full = add_ma(df_full, periods=cfg["ma_periods"] or [5, 20, 60])
+    chart_ma_periods = cfg["ma_periods"] or [5, 20, 60]
+    analysis_ma_periods = sorted(set(chart_ma_periods + DEFAULT_MA_PERIODS))
+    df_full = add_ma(df_full, periods=analysis_ma_periods)
 
     try:
         df_full = add_macd(df_full,
@@ -137,6 +145,7 @@ def render(cfg: dict, user_id: str) -> None:
 
     # ── Signal badge ──
     _render_dual_badge(today_buy, today_sell)
+    _render_ai_signal_explainer(ticker, user_id, df_full, signal_layers, today_buy, today_sell)
     st.markdown("")
 
     if failed_indicators:
@@ -150,23 +159,30 @@ def render(cfg: dict, user_id: str) -> None:
     x_range_start = _visible["date"].iloc[0] if not _visible.empty else df_full["date"].iloc[0]
     nonce = st.session_state.get("chart_nonce", 0)
 
+    chart_df = _chart_dataframe(ticker, period, cfg.get("kline_granularity", "1d"), df_full, analysis_ma_periods, sd_params, cfg)
+    chart_signal_layers = signal_layers if cfg.get("kline_granularity", "1d") == "1d" else []
+
     fig = build_combined_chart(
-        df_full, ticker,
-        ma_periods=cfg["ma_periods"],
+        chart_df, ticker,
+        ma_periods=chart_ma_periods,
         signal_dates=[],   # legacy param — signal_layers takes over
         sell_dates=[],
         bias_period=cfg["bias_period"],
-        show_macd=cfg["show_macd"] and "histogram" in df_full.columns,
-        show_kd=cfg["show_kd"] and "K" in df_full.columns,
+        show_macd=cfg["show_macd"] and "histogram" in chart_df.columns,
+        show_kd=cfg["show_kd"] and "K" in chart_df.columns,
         show_bias=cfg["show_bias"],
         x_range_start=x_range_start,
         period=period,
         uirevision=f"{ticker}_{period}_{nonce}",
-        signal_layers=signal_layers,
+        signal_layers=chart_signal_layers,
+        show_candlestick_patterns=bool(cfg.get("show_candlestick_patterns", True)),
+        show_volume_profile=bool(cfg.get("show_volume_profile", False)),
+        ma_cross_events=_recent_ma_cross_events(chart_df) if cfg.get("show_ma_cross_labels", True) else [],
+        granularity=cfg.get("kline_granularity", "1d"),
     )
     render_combined_chart(
         fig,
-        df_full,
+        chart_df,
         key=f"main_chart_{ticker}",
         config={
             "displayModeBar": True,
@@ -175,6 +191,9 @@ def render(cfg: dict, user_id: str) -> None:
         },
     )
     st.caption("提示：框選可縮放 X 軸，平移或縮放後價格 Y 軸會依可視範圍自動調整。底部滑桿可查看更早歷史。點擊 ↩ 重置 或圖表右上角「Reset axes」可回到選定期間。")
+
+    _render_ma_analysis_panel(df_full)
+    render_chip_panel(ticker)
 
     # ── Strategy D condition diagnosis (Strategy D-specific, shown only when active) ──
     if "strategy_d" in active_strategies:
@@ -250,7 +269,7 @@ def render(cfg: dict, user_id: str) -> None:
                 articles, sentiment = [], {"score": 0.0, "label": "neutral", "article_count": 0}
             except Exception:
                 articles, sentiment = [], {"score": 0.0, "label": "neutral", "article_count": 0}
-        render_news_section(articles, sentiment)
+        render_news_section(articles, sentiment, ticker=ticker, user_id=user_id)
 
 
 def _render_dual_badge(today_buy: bool, today_sell: bool) -> None:
@@ -266,6 +285,122 @@ def _render_dual_badge(today_buy: bool, today_sell: bool) -> None:
             st.warning("🔴 今日賣出訊號")
         else:
             st.info("— 無賣出訊號")
+
+
+def _render_ai_signal_explainer(
+    ticker: str,
+    user_id: str,
+    df_full: pd.DataFrame,
+    signal_layers: list[SignalLayer],
+    today_buy: bool,
+    today_sell: bool,
+) -> None:
+    key = f"ai_signal_explanation_{ticker}"
+    cols = st.columns([1, 5])
+    if cols[0].button("🤖 解讀", key=f"btn_ai_signal_{ticker}", help="用已設定的 AI provider 解讀目前訊號"):
+        with st.spinner("產生 AI 解讀…"):
+            try:
+                chain = build_default_chain(user_id)
+                st.session_state[key] = generate_signal_explanation(
+                    chain,
+                    ticker,
+                    df_full,
+                    signal_layers,
+                    today_buy,
+                    today_sell,
+                )
+            except MissingAIProviderConfig:
+                st.session_state[key] = ""
+                cols[1].info("尚未設定 AI API key，可至設定頁新增 Anthropic、Gemini 或 OpenAI key。")
+            except AIProviderError as exc:
+                st.session_state[key] = ""
+                cols[1].error(f"AI 解讀失敗：{exc}")
+            except Exception as exc:
+                st.session_state[key] = ""
+                cols[1].error(f"AI 解讀失敗：{exc}")
+
+    if st.session_state.get(key):
+        with st.expander("AI 訊號解讀", expanded=True):
+            st.markdown(st.session_state[key])
+
+
+def _render_ma_analysis_panel(df_full: pd.DataFrame) -> None:
+    st.markdown("---")
+    with st.expander("均線分析", expanded=True):
+        summary = summarize_ma_state(df_full, DEFAULT_MA_PERIODS)
+        trend = detect_hh_hl(df_full.tail(180), pivot_window=5)
+        necklines = detect_neckline(df_full, lookback=60)
+
+        col_score, col_month, col_trend = st.columns([1, 1, 1])
+        col_score.metric("多頭排列", summary["stars"], f"{summary['score']} / 4")
+        col_month.metric("月線 > 季線", "是" if summary["month_above_quarter"] else "否")
+        col_trend.metric("趨勢", trend_label(trend["trend"]))
+
+        direction_cols = st.columns(6)
+        arrow_map = {"上行": "↑", "下彎": "↓", "持平": "→"}
+        for col, period in zip(direction_cols, DEFAULT_MA_PERIODS):
+            direction = summary["directions"].get(period, "持平")
+            col.markdown(f"**MA{period}**<br>{arrow_map.get(direction, '→')} {direction}", unsafe_allow_html=True)
+
+        hook = summary.get("hook_forecast_20", [])
+        if hook:
+            hook_df = pd.DataFrame({"未來日": [f"D+{i}" for i in range(1, len(hook) + 1)], "MA20扣抵": hook})
+            st.line_chart(hook_df, x="未來日", y="MA20扣抵", height=140)
+
+        recent_crosses = summary.get("recent_crosses", [])
+        if recent_crosses:
+            st.caption("近期 MA 交叉")
+            st.dataframe(pd.DataFrame(recent_crosses).tail(5), hide_index=True, use_container_width=True)
+
+        if necklines:
+            st.caption("近 60 日支撐/壓力參考：" + " / ".join(f"{level:.2f}" for level in necklines))
+
+
+def _recent_ma_cross_events(df_full: pd.DataFrame) -> list[dict]:
+    events = []
+    for fast, slow in [(5, 10), (10, 20), (20, 60), (60, 120), (120, 240)]:
+        events.extend(ma_cross_signal(df_full, fast, slow)[-2:])
+    return sorted(events, key=lambda item: item["date"])[-5:]
+
+
+def _chart_dataframe(
+    ticker: str,
+    period: str,
+    granularity: str,
+    daily_df: pd.DataFrame,
+    ma_periods: list[int],
+    sd_params: dict,
+    cfg: dict,
+) -> pd.DataFrame:
+    if granularity == "1d":
+        return daily_df
+    chart_df = fetch_prices_by_interval(ticker, granularity, period=period)
+    if chart_df.empty:
+        return daily_df
+    chart_df = add_ma(chart_df, periods=ma_periods)
+    try:
+        chart_df = add_macd(
+            chart_df,
+            fast=sd_params["macd_fast"],
+            slow=sd_params["macd_slow"],
+            signal=sd_params["macd_signal"],
+        )
+    except ValueError:
+        pass
+    try:
+        chart_df = add_kd(
+            chart_df,
+            k=sd_params["kd_k"],
+            d=sd_params["kd_d"],
+            smooth_k=sd_params["kd_smooth_k"],
+        )
+    except ValueError:
+        pass
+    try:
+        chart_df = add_bias(chart_df, period=cfg["bias_period"])
+    except ValueError:
+        pass
+    return chart_df
 
 
 def _strategy_d_diag_param_summary(params: dict, diag_type: str) -> str:

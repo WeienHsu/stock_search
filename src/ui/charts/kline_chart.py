@@ -8,6 +8,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit.components.v1 as components
 
+from src.indicators.candlestick_patterns import detect_candlestick_patterns
+from src.indicators.ma_analysis import format_inline_label
+from src.indicators.volume_profile import compute_volume_profile
+
 
 @dataclass
 class SignalLayer:
@@ -163,6 +167,65 @@ def _bias_traces(df: pd.DataFrame, period: int) -> list[go.BaseTraceType]:
     ]
 
 
+def _candlestick_pattern_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
+    P = _get_palette()
+    patterns = detect_candlestick_patterns(df).tail(80)
+    if patterns.empty:
+        return []
+
+    color_map = {
+        "bullish": P.GREEN,
+        "bearish": P.RED,
+        "neutral": P.TEXT_SECONDARY,
+    }
+    traces = []
+    for implication, group in patterns.groupby("implication"):
+        traces.append(go.Scatter(
+            x=group["date"],
+            y=group["price"],
+            mode="markers+text",
+            text=group["marker"],
+            textposition="middle center",
+            marker=dict(
+                symbol="circle",
+                size=18,
+                color=color_map.get(implication, P.TEXT_SECONDARY),
+                opacity=0.82,
+                line=dict(color=P.BACKGROUND, width=1),
+            ),
+            customdata=group[["label", "implication"]].values,
+            hovertemplate="%{x}<br>%{customdata[0]}<br>%{customdata[1]}<extra></extra>",
+            name=f"K線形態-{_implication_label(implication)}",
+        ))
+    return traces
+
+
+def _ma_cross_label_trace(df: pd.DataFrame, events: list[dict]) -> go.BaseTraceType | None:
+    if not events:
+        return None
+    event_df = pd.DataFrame(events[-5:])
+    if event_df.empty or "date" not in event_df.columns:
+        return None
+    date_to_high = dict(zip(df["date"].astype(str).str[:10], pd.to_numeric(df["high"], errors="coerce")))
+    event_df["y"] = event_df["date"].map(date_to_high).fillna(event_df.get("price", 0)) * 1.018
+    event_df["label"] = event_df.apply(lambda row: format_inline_label(row.to_dict()), axis=1)
+    P = _get_palette()
+    return go.Scatter(
+        x=event_df["date"],
+        y=event_df["y"],
+        mode="text",
+        text=event_df["label"],
+        textposition="top center",
+        textfont=dict(color=P.TEXT_PRIMARY, size=10),
+        hovertemplate="%{text}<extra></extra>",
+        name="MA交叉標註",
+    )
+
+
+def _implication_label(value: str) -> str:
+    return {"bullish": "偏多", "bearish": "偏空", "neutral": "中性"}.get(value, value)
+
+
 # ── Combined chart ──
 
 def build_combined_chart(
@@ -179,6 +242,10 @@ def build_combined_chart(
     sell_dates: list[str] | None = None,
     uirevision: str = "",
     signal_layers: list[SignalLayer] | None = None,
+    show_candlestick_patterns: bool = False,
+    show_volume_profile: bool = False,
+    ma_cross_events: list[dict] | None = None,
+    granularity: str = "1d",
 ) -> go.Figure:
     """Combined subplot figure with shared x-axis.
 
@@ -212,7 +279,7 @@ def build_combined_chart(
     row_heights = [h / sum(raw_heights) for h in raw_heights]
 
     panel_titles = {
-        "main": f"{ticker} — K 線圖",
+        "main": f"{ticker} — K 線圖 ({granularity})",
         "macd": "MACD",
         "kd": "KD",
         "bias": f"乖離率 (MA{bias_period})",
@@ -229,6 +296,12 @@ def build_combined_chart(
         if panel == "main":
             for trace in _main_traces(df, ticker, ma_periods):
                 fig.add_trace(trace, row=row_idx, col=1)
+            if show_candlestick_patterns:
+                for trace in _candlestick_pattern_traces(df):
+                    fig.add_trace(trace, row=row_idx, col=1)
+            cross_trace = _ma_cross_label_trace(df, ma_cross_events or [])
+            if cross_trace is not None:
+                fig.add_trace(cross_trace, row=row_idx, col=1)
         elif panel == "macd":
             for trace in _macd_traces(df):
                 fig.add_trace(trace, row=row_idx, col=1)
@@ -298,6 +371,14 @@ def build_combined_chart(
             shapes=list(fig.layout.shapes) + new_shapes if fig.layout.shapes else new_shapes,
         )
 
+    if show_volume_profile:
+        profile_shapes, profile_annotations = _volume_profile_overlay(df)
+        if profile_shapes or profile_annotations:
+            fig.update_layout(
+                shapes=list(fig.layout.shapes or []) + profile_shapes,
+                annotations=list(fig.layout.annotations or []) + profile_annotations,
+            )
+
     _apply_layout(fig)
     fig.update_layout(
         height=total_height,
@@ -341,6 +422,48 @@ def build_combined_chart(
     return fig
 
 
+def _volume_profile_overlay(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
+    P = _get_palette()
+    profile = compute_volume_profile(df, n_days=60, n_bins=20)
+    top_zones = profile.get("top_zones", [])
+    if not top_zones or df.empty:
+        return [], []
+
+    current_close = float(pd.to_numeric(df["close"], errors="coerce").dropna().iloc[-1])
+    max_volume = max(float(zone["volume"]) for zone in top_zones) or 1.0
+    shapes = []
+    annotations = []
+    for idx, zone in enumerate(top_zones):
+        price = float(zone["price"])
+        is_poc = price == profile.get("poc_price")
+        color = P.RED if price > current_close else P.GREEN
+        width = 1.2 + (float(zone["volume"]) / max_volume) * 3.0
+        shapes.append(dict(
+            type="line",
+            xref="paper",
+            x0=0.78,
+            x1=1.0,
+            yref="y",
+            y0=price,
+            y1=price,
+            line=dict(color=color, width=width, dash="solid" if is_poc else "dot"),
+            opacity=0.72 if is_poc else 0.48,
+        ))
+        annotations.append(dict(
+            x=1.0,
+            y=price,
+            xref="paper",
+            yref="y",
+            xanchor="left",
+            showarrow=False,
+            text=("POC " if is_poc else "VP ") + f"{price:.2f}",
+            font=dict(color=color, size=10),
+        ))
+        if idx >= 2:
+            break
+    return shapes, annotations
+
+
 def render_combined_chart(
     fig: go.Figure,
     df: pd.DataFrame,
@@ -369,7 +492,8 @@ def render_combined_chart(
   const lows = {json.dumps(lows)};
   const highs = {json.dumps(highs)};
   const xs = rawDates.map(function(d) {{
-    const t = Date.parse(String(d).slice(0, 10) + "T00:00:00");
+    const s = String(d);
+    const t = Date.parse(s.length > 10 ? s.replace(" ", "T") : s.slice(0, 10) + "T00:00:00");
     return Number.isFinite(t) ? t : null;
   }});
 
