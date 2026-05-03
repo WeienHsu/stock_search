@@ -1,7 +1,7 @@
 import pandas as pd
 
 from src.indicators.ma import add_ma
-from src.ui.charts.kline_chart import build_combined_chart
+from src.ui.charts.kline_chart import SignalLayer, build_combined_chart
 
 
 def test_build_combined_chart_adds_p25_overlays():
@@ -45,3 +45,39 @@ def test_build_combined_chart_adds_p25_overlays():
     assert any(str(name).startswith("K線形態") for name in names)
     assert len(fig.layout.shapes or []) >= 1
     assert "(1wk)" in str(fig.layout.annotations[0].text)
+
+
+def test_build_combined_chart_can_hide_signal_markers():
+    df = pd.DataFrame({
+        "date": pd.date_range("2026-01-01", periods=5, freq="B").strftime("%Y-%m-%d"),
+        "open": [100, 101, 102, 103, 104],
+        "high": [101, 102, 103, 104, 105],
+        "low": [99, 100, 101, 102, 103],
+        "close": [100, 101, 102, 103, 104],
+        "volume": [1000, 1100, 1200, 1300, 1400],
+    })
+    df = add_ma(df, [5])
+    signal_date = df["date"].iloc[-1]
+
+    fig = build_combined_chart(
+        df,
+        "TEST",
+        ma_periods=[5],
+        signal_dates=[],
+        bias_period=20,
+        show_macd=False,
+        show_kd=False,
+        show_bias=False,
+        signal_layers=[
+            SignalLayer(
+                strategy_id="strategy_d",
+                label="Strategy D",
+                buy_dates=[signal_date],
+                sell_dates=[],
+            )
+        ],
+        show_signals=False,
+    )
+
+    annotation_texts = [str(annotation.text) for annotation in fig.layout.annotations]
+    assert "▼" not in annotation_texts

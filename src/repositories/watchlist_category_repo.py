@@ -6,10 +6,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from src.repositories.watchlist_repo import add_ticker as add_watchlist_ticker
+from src.repositories.watchlist_repo import get_watchlist
+
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "watchlist_categories.db"
 
 DEFAULT_CATEGORIES: list[tuple[str, list[tuple[str, str]]]] = [
-    ("我的清單", []),
+    ("自選清單", []),
     ("台股 ETF", [
         ("0050.TW", "元大台灣50"),
         ("00878.TW", "國泰永續高股息"),
@@ -92,6 +95,7 @@ def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
 
 def ensure_default_categories(user_id: str, *, db_path: Path = _DEFAULT_DB) -> None:
     with _conn(db_path) as conn:
+        _migrate_primary_category_name(conn, user_id)
         existing = conn.execute(
             "SELECT COUNT(*) FROM watchlist_categories WHERE user_id = ?",
             (user_id,),
@@ -129,7 +133,7 @@ def list_items(user_id: str, category_id: str, *, db_path: Path = _DEFAULT_DB) -
             """,
             (user_id, category_id),
         ).fetchall()
-    return [dict(row) for row in rows]
+    return _join_watchlist_metadata(user_id, [dict(row) for row in rows])
 
 
 def create_category(user_id: str, name: str, *, db_path: Path = _DEFAULT_DB) -> dict[str, Any]:
@@ -174,7 +178,7 @@ def add_item(
         ).fetchone()[0]
         item_id = _insert_item(conn, user_id, category_id, clean_ticker, name.strip(), int(max_order) + 1, note.strip())
         row = conn.execute("SELECT * FROM watchlist_items WHERE id = ?", (item_id,)).fetchone()
-    return dict(row)
+    return _join_watchlist_metadata(user_id, [dict(row)])[0]
 
 
 def delete_item(user_id: str, item_id: str, *, db_path: Path = _DEFAULT_DB) -> None:
@@ -183,6 +187,62 @@ def delete_item(user_id: str, item_id: str, *, db_path: Path = _DEFAULT_DB) -> N
             "DELETE FROM watchlist_items WHERE user_id = ? AND id = ?",
             (user_id, item_id),
         )
+
+
+def is_primary_watchlist_category(category: dict[str, Any]) -> bool:
+    return str(category.get("name", "")).strip() in {"自選清單", "我的清單"}
+
+
+def _join_watchlist_metadata(user_id: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    watchlist_by_ticker = {
+        str(item.get("ticker", "")).upper(): item
+        for item in get_watchlist(user_id)
+    }
+    joined = []
+    for row in rows:
+        ticker = str(row.get("ticker", "")).upper()
+        master = watchlist_by_ticker.get(ticker, {})
+        item = dict(row)
+        item["ticker"] = ticker
+        item["name"] = master.get("name") or row.get("name", "")
+        item["note"] = row.get("note", "")
+        joined.append(item)
+    return joined
+
+
+def _migrate_primary_category_name(conn: sqlite3.Connection, user_id: str) -> None:
+    old_row = conn.execute(
+        "SELECT id FROM watchlist_categories WHERE user_id = ? AND name = ?",
+        (user_id, "我的清單"),
+    ).fetchone()
+    if not old_row:
+        return
+
+    new_row = conn.execute(
+        "SELECT id FROM watchlist_categories WHERE user_id = ? AND name = ?",
+        (user_id, "自選清單"),
+    ).fetchone()
+    if not new_row:
+        conn.execute(
+            "UPDATE watchlist_categories SET name = ?, updated_at = ? WHERE id = ?",
+            ("自選清單", time.time(), old_row["id"]),
+        )
+        return
+
+    old_items = conn.execute(
+        "SELECT ticker, name FROM watchlist_items WHERE user_id = ? AND category_id = ?",
+        (user_id, old_row["id"]),
+    ).fetchall()
+    for item in old_items:
+        add_watchlist_ticker(user_id, str(item["ticker"]), str(item["name"] or ""))
+    conn.execute(
+        "DELETE FROM watchlist_items WHERE user_id = ? AND category_id = ?",
+        (user_id, old_row["id"]),
+    )
+    conn.execute(
+        "DELETE FROM watchlist_categories WHERE user_id = ? AND id = ?",
+        (user_id, old_row["id"]),
+    )
 
 
 def _insert_category(conn: sqlite3.Connection, user_id: str, name: str, sort_order: int) -> str:

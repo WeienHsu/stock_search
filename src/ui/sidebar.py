@@ -12,14 +12,40 @@ _THEME_OPTIONS = {"Morandi 暖色": "morandi", "Dark 深色": "dark"}
 _THEME_LABELS  = {v: k for k, v in _THEME_OPTIONS.items()}
 
 _STRATEGY_LABELS = {
-    "strategy_d":  "Strategy D（MACD + KD）",
-    "strategy_kd": "Strategy KD（黃金 / 死亡交叉）",
+    "strategy_d":  "Strategy D 訊號",
+    "strategy_kd": "Strategy KD 訊號",
 }
 
 
 def _load_defaults() -> dict:
     with open(_SETTINGS_PATH, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _normalize_saved_active_strategies(
+    all_strategies: list[str],
+    saved_active: list[str] | None,
+    default_strategy: str = "strategy_d",
+) -> list[str]:
+    if saved_active is None:
+        return [default_strategy] if default_strategy in all_strategies else []
+
+    if not saved_active:
+        return []
+
+    active = [strategy_id for strategy_id in saved_active if strategy_id in all_strategies]
+    if active:
+        return active
+    return [default_strategy] if default_strategy in all_strategies else []
+
+
+def _active_strategies_from_toggles(strategy_toggles: dict[str, bool]) -> list[str]:
+    return [strategy_id for strategy_id, checked in strategy_toggles.items() if checked]
+
+
+def _strategy_param_expander_label(strategy_id: str, title: str, active_strategies: list[str]) -> str:
+    marker = "✅" if strategy_id in active_strategies else "⬜"
+    return f"{marker} {title}"
 
 
 def render_sidebar(user_id: str) -> dict:
@@ -124,23 +150,46 @@ def render_sidebar(user_id: str) -> dict:
 
     st.sidebar.markdown("---")
 
-    # ── Active strategies (Dashboard chart overlay) ──
+    # ── Indicator display and strategy overlays ──
     all_strategies = list_strategies()
-    saved_active = [s for s in prefs.get("active_strategies", ["strategy_d"]) if s in all_strategies]
-    if not saved_active:
-        saved_active = ["strategy_d"]
-    active_strategies = st.sidebar.multiselect(
-        "顯示策略訊號",
-        options=all_strategies,
-        default=saved_active,
-        format_func=lambda x: _STRATEGY_LABELS.get(x, x),
-    )
+    saved_active = _normalize_saved_active_strategies(all_strategies, prefs.get("active_strategies"))
+
+    st.sidebar.markdown("**指標顯示**")
+
+    show_macd = st.sidebar.checkbox("MACD", value=prefs.get("show_macd", True))
+    show_kd   = st.sidebar.checkbox("KD",   value=prefs.get("show_kd",   True))
+    show_bias = st.sidebar.checkbox("乖離率", value=prefs.get("show_bias", True))
+    show_news = st.sidebar.checkbox("新聞情緒", value=prefs.get("show_news", True))
+    show_candlestick_patterns = st.sidebar.checkbox("K線形態", value=prefs.get("show_candlestick_patterns", True))
+    show_volume_profile = st.sidebar.checkbox("Volume Profile", value=prefs.get("show_volume_profile", False))
+    show_ma_cross_labels = st.sidebar.checkbox("MA交叉標註", value=prefs.get("show_ma_cross_labels", True))
+
+    strategy_toggles = {}
+    for strategy_id in all_strategies:
+        label = _STRATEGY_LABELS.get(strategy_id, strategy_id)
+        strategy_toggles[strategy_id] = st.sidebar.checkbox(
+            label,
+            value=strategy_id in saved_active,
+            key=f"show_{strategy_id}",
+        )
+    active_strategies = _active_strategies_from_toggles(strategy_toggles)
+    if active_strategies != prefs.get("active_strategies"):
+        prefs["active_strategies"] = active_strategies
+        save_preferences(user_id, prefs)
+
+    bias_period = st.sidebar.slider(
+        "乖離率週期",
+        min_value=int(defaults["bias"]["min_period"]),
+        max_value=int(defaults["bias"]["max_period"]),
+        value=int(prefs.get("bias_period", defaults["bias"]["period"])),
+        step=1,
+    ) if show_bias else defaults["bias"]["period"]
 
     st.sidebar.markdown("---")
 
     # ── Strategy D params (collapsible) ──
     sd = defaults["strategy_d"]
-    with st.sidebar.expander("Strategy D 參數", expanded=False):
+    with st.sidebar.expander(_strategy_param_expander_label("strategy_d", "Strategy D 參數", active_strategies), expanded=False):
         st.caption("買進與賣出可分開調整；未保存的新使用者會沿用既有預設值。")
         buy_kd_window = st.slider("買進 KD 回看視窗", 1, 10, prefs.get("buy_kd_window", prefs.get("kd_window", sd["buy_kd_window"])))
         buy_n_bars = st.slider("買進 MACD 收斂根數", 3, 10, prefs.get("buy_n_bars", prefs.get("n_bars", sd["buy_n_bars"])))
@@ -181,7 +230,7 @@ def render_sidebar(user_id: str) -> dict:
 
     # ── Strategy KD params (collapsible) ──
     skd = defaults.get("strategy_kd", {})
-    with st.sidebar.expander("Strategy KD 參數", expanded=False):
+    with st.sidebar.expander(_strategy_param_expander_label("strategy_kd", "Strategy KD 參數", active_strategies), expanded=False):
         enable_k_thresh = st.checkbox(
             "啟用低檔篩選（黃金交叉）",
             value=prefs.get("skd_enable_k_thresh", False),
@@ -211,25 +260,6 @@ def render_sidebar(user_id: str) -> dict:
             value=prefs.get("skd_enable_sell", skd.get("enable_sell", True)),
             key="skd_enable_sell",
         )
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**指標顯示**")
-
-    show_macd = st.sidebar.checkbox("MACD", value=prefs.get("show_macd", True))
-    show_kd   = st.sidebar.checkbox("KD",   value=prefs.get("show_kd",   True))
-    show_bias = st.sidebar.checkbox("乖離率", value=prefs.get("show_bias", True))
-    show_news = st.sidebar.checkbox("新聞情緒", value=prefs.get("show_news", True))
-    show_candlestick_patterns = st.sidebar.checkbox("K線形態", value=prefs.get("show_candlestick_patterns", True))
-    show_volume_profile = st.sidebar.checkbox("Volume Profile", value=prefs.get("show_volume_profile", False))
-    show_ma_cross_labels = st.sidebar.checkbox("MA交叉標註", value=prefs.get("show_ma_cross_labels", True))
-
-    bias_period = st.sidebar.slider(
-        "乖離率週期",
-        min_value=int(defaults["bias"]["min_period"]),
-        max_value=int(defaults["bias"]["max_period"]),
-        value=int(prefs.get("bias_period", defaults["bias"]["period"])),
-        step=1,
-    ) if show_bias else defaults["bias"]["period"]
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**MA 均線**")

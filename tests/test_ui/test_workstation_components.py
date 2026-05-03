@@ -25,9 +25,16 @@ def test_my_list_category_uses_existing_watchlist(monkeypatch):
     monkeypatch.setattr(module, "get_watchlist", lambda user_id: [{"ticker": "MSFT", "name": "Microsoft"}])
     monkeypatch.setattr(module, "list_items", lambda user_id, category_id: [{"ticker": "TSLA", "name": "Tesla"}])
 
-    items = module._items_for_category("user-1", {"id": "cat-1", "name": "我的清單"})
+    items = module._items_for_category("user-1", {"id": "cat-1", "name": "自選清單"})
 
     assert items == [{"ticker": "MSFT", "name": "Microsoft"}]
+
+
+def test_workstation_uses_shared_market_strip():
+    import src.ui.pages.workstation_page as module
+
+    assert not hasattr(module, "_render_market_board")
+    assert hasattr(module, "_render_market_strip")
 
 
 def test_build_intraday_tick_chart_returns_line_trace():

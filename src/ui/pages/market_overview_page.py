@@ -3,12 +3,13 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from src.data.index_fetcher import enrich_index_indicators, fetch_index_ohlcv, get_taiex_realtime_breadth, index_snapshot
+from src.data.index_fetcher import enrich_index_indicators, fetch_index_ohlcv, get_taiex_realtime_breadth
 from src.data.market_sentiment_fetcher import fetch_cnn_fear_greed, fetch_mmfi
 from src.data.taifex_fetcher import fetch_taifex_txf_open_interest
 from src.data.twse_fetcher import fetch_institutional_flow, fetch_margin_summary, fetch_valuation_summary
 from src.ui.components.fear_greed_gauge import build_fear_greed_gauge
-from src.ui.components.index_mini_chart import build_bar_chart, build_index_sparkline, build_line_chart
+from src.ui.components.index_mini_chart import build_bar_chart, build_line_chart
+from src.ui.components.market_summary import render_market_full_cards
 
 
 def render() -> None:
@@ -26,55 +27,13 @@ def render() -> None:
         margin = _safe_dict(fetch_margin_summary)
         realtime_breadth = _safe_dict(get_taiex_realtime_breadth)
 
-    _render_taiwan_market(taiex, gtsm, realtime_breadth)
+    render_market_full_cards(taiex, gtsm, realtime_breadth)
     st.markdown("---")
     _render_flow_and_fx(usdtwd, institutional, taifex)
     st.markdown("---")
     _render_us_sentiment(fear_greed, mmfi)
     st.markdown("---")
     _render_taiwan_valuation(valuation, margin)
-
-
-def _render_taiwan_market(taiex: pd.DataFrame, gtsm: pd.DataFrame, realtime_breadth: dict | None = None) -> None:
-    st.markdown("### 台股大盤")
-    col1, col2 = st.columns(2)
-    with col1:
-        _render_index_card("TAIEX 加權指數", taiex)
-    with col2:
-        _render_index_card("GTSM 櫃買指數", gtsm)
-    if realtime_breadth:
-        _render_realtime_breadth_card(realtime_breadth)
-
-
-def _render_index_card(title: str, df: pd.DataFrame) -> None:
-    snap = index_snapshot(df)
-    if not snap:
-        st.warning(f"{title} 暫無資料")
-        return
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("收盤", f"{snap['close']:.2f}", f"{snap['change_pct']:.2f}%")
-    metric_cols[1].metric("KD", snap["kd_status"])
-    metric_cols[2].metric("MACD", snap["macd_status"])
-    metric_cols[3].metric("MA 排列", "★" * int(snap["ma_score"]))
-    volume_ratio = snap.get("volume_ratio")
-    if volume_ratio is not None:
-        st.caption(f"成交量 / 5日均量：{volume_ratio:.2f}x")
-    st.plotly_chart(build_index_sparkline(df.tail(60), title), use_container_width=True)
-
-
-def _render_realtime_breadth_card(data: dict) -> None:
-    st.markdown("#### 即時委買 / 委賣")
-    if not data.get("available"):
-        st.info(data.get("message", "即時委買委賣資料暫不可用"))
-        return
-    col_buy, col_sell, col_diff = st.columns(3)
-    col_buy.metric("委買張數", f"{int(data.get('buy_orders_lots', 0)):,.0f}")
-    col_sell.metric("委賣張數", f"{int(data.get('sell_orders_lots', 0)):,.0f}")
-    col_diff.metric("買賣差", f"{int(data.get('buy_sell_diff', 0)):,.0f}")
-    ratio = data.get("ratio")
-    if ratio is not None:
-        st.progress(min(1.0, max(0.0, float(ratio) / 2)), text=f"委買 / 委賣 ratio：{float(ratio):.2f}")
-    st.caption(f"最後更新：{data.get('ts') or '—'}")
 
 
 def _render_flow_and_fx(usdtwd: pd.DataFrame, institutional: pd.DataFrame, taifex: pd.DataFrame) -> None:

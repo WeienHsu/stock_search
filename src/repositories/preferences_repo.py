@@ -12,6 +12,7 @@ _DEFAULTS: dict[str, Any] = {
     "show_news": True,
     "bias_period": 20,
     "ma_periods": [5, 20, 60],
+    "active_strategies": ["strategy_d"],
     "default_period": "6M",
     "theme": "morandi",
     "kd_window": 10,

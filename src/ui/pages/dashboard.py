@@ -57,9 +57,20 @@ def render(cfg: dict, user_id: str) -> None:
         st.info("請在左側輸入股票代號")
         return
 
-    col_title, col_reset = st.columns([9, 1])
+    col_title, col_workstation, col_market, col_reset = st.columns([7, 1.2, 1.2, 0.8])
     with col_title:
         st.markdown(f"## {ticker}")
+    with col_workstation:
+        st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
+        if st.button("綜合看盤", key="btn_dashboard_to_workstation", use_container_width=True):
+            st.session_state["_pending_nav_page"] = "🖥️ 綜合看盤"
+            st.session_state["_pending_ticker"] = ticker
+            st.rerun()
+    with col_market:
+        st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
+        if st.button("大盤總覽", key="btn_dashboard_to_market", use_container_width=True):
+            st.session_state["_pending_nav_page"] = "🌏 大盤總覽"
+            st.rerun()
     with col_reset:
         st.markdown("<div style='padding-top:0.6rem'></div>", unsafe_allow_html=True)
         if st.button("↩ 重置", key="btn_reset_chart", help="重置縮放至選定期間"):
@@ -177,6 +188,7 @@ def render(cfg: dict, user_id: str) -> None:
         period=period,
         uirevision=f"{ticker}_{period}_{nonce}",
         signal_layers=chart_signal_layers,
+        show_signals=True,
         show_candlestick_patterns=bool(cfg.get("show_candlestick_patterns", True)),
         show_volume_profile=bool(cfg.get("show_volume_profile", False)),
         ma_cross_events=_recent_ma_cross_events(chart_df) if cfg.get("show_ma_cross_labels", True) else [],

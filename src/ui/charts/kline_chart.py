@@ -242,6 +242,7 @@ def build_combined_chart(
     sell_dates: list[str] | None = None,
     uirevision: str = "",
     signal_layers: list[SignalLayer] | None = None,
+    show_signals: bool = True,
     show_candlestick_patterns: bool = False,
     show_volume_profile: bool = False,
     ma_cross_events: list[dict] | None = None,
@@ -333,37 +334,38 @@ def build_combined_chart(
             sell_color=getattr(P, "SIGNAL_SELL", "#5B7FA8"),
         )]
 
-    for layer in signal_layers:
-        for sig_date in layer.buy_dates:
-            if str(sig_date)[:10] not in date_set:
-                continue
-            new_annotations.append(dict(
-                x=sig_date, y=1.0,
-                xref="x", yref="y domain",
-                yanchor="top", text=layer.buy_glyph, showarrow=False,
-                font=dict(color=layer.buy_color, size=16, family="sans-serif"),
-            ))
-            new_shapes.append(dict(
-                type="line", x0=sig_date, x1=sig_date, y0=0, y1=1,
-                xref="x", yref="paper",
-                line=dict(color=layer.buy_color, width=1.5, dash="dot"),
-                opacity=0.6,
-            ))
-        for sell_date in layer.sell_dates:
-            if str(sell_date)[:10] not in date_set:
-                continue
-            new_annotations.append(dict(
-                x=sell_date, y=0.0,
-                xref="x", yref="y domain",
-                yanchor="bottom", text=layer.sell_glyph, showarrow=False,
-                font=dict(color=layer.sell_color, size=16, family="sans-serif"),
-            ))
-            new_shapes.append(dict(
-                type="line", x0=sell_date, x1=sell_date, y0=0, y1=1,
-                xref="x", yref="paper",
-                line=dict(color=layer.sell_color, width=1.5, dash="dot"),
-                opacity=0.6,
-            ))
+    if show_signals:
+        for layer in signal_layers:
+            for sig_date in layer.buy_dates:
+                if str(sig_date)[:10] not in date_set:
+                    continue
+                new_annotations.append(dict(
+                    x=sig_date, y=1.0,
+                    xref="x", yref="y domain",
+                    yanchor="top", text=layer.buy_glyph, showarrow=False,
+                    font=dict(color=layer.buy_color, size=16, family="sans-serif"),
+                ))
+                new_shapes.append(dict(
+                    type="line", x0=sig_date, x1=sig_date, y0=0, y1=1,
+                    xref="x", yref="paper",
+                    line=dict(color=layer.buy_color, width=1.5, dash="dot"),
+                    opacity=0.6,
+                ))
+            for sell_date in layer.sell_dates:
+                if str(sell_date)[:10] not in date_set:
+                    continue
+                new_annotations.append(dict(
+                    x=sell_date, y=0.0,
+                    xref="x", yref="y domain",
+                    yanchor="bottom", text=layer.sell_glyph, showarrow=False,
+                    font=dict(color=layer.sell_color, size=16, family="sans-serif"),
+                ))
+                new_shapes.append(dict(
+                    type="line", x0=sell_date, x1=sell_date, y0=0, y1=1,
+                    xref="x", yref="paper",
+                    line=dict(color=layer.sell_color, width=1.5, dash="dot"),
+                    opacity=0.6,
+                ))
 
     if new_annotations or new_shapes:
         fig.update_layout(

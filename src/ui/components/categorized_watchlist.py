@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from src.data.price_fetcher import fetch_quote
-from src.repositories.watchlist_category_repo import list_categories, list_items
+from src.repositories.watchlist_category_repo import is_primary_watchlist_category, list_categories, list_items
 from src.repositories.watchlist_repo import get_watchlist
 
 
@@ -42,7 +42,7 @@ def render_categorized_watchlist(user_id: str) -> str | None:
 
 
 def _items_for_category(user_id: str, category: dict) -> list[dict]:
-    if category.get("name") == "我的清單":
+    if is_primary_watchlist_category(category):
         return get_watchlist(user_id)
     return list_items(user_id, category["id"])
 

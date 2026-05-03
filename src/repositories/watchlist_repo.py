@@ -24,12 +24,16 @@ def save_watchlist(user_id: str, items: list[dict[str, Any]]) -> None:
 
 
 def add_ticker(user_id: str, ticker: str, name: str = "") -> None:
+    ticker = ticker.strip().upper()
+    if not ticker:
+        return
     items = get_watchlist(user_id)
-    if not any(i["ticker"] == ticker for i in items):
+    if not any(str(i["ticker"]).upper() == ticker for i in items):
         items.append({"ticker": ticker, "name": name})
         save_watchlist(user_id, items)
 
 
 def remove_ticker(user_id: str, ticker: str) -> None:
-    items = [i for i in get_watchlist(user_id) if i["ticker"] != ticker]
+    ticker = ticker.strip().upper()
+    items = [i for i in get_watchlist(user_id) if str(i["ticker"]).upper() != ticker]
     save_watchlist(user_id, items)
