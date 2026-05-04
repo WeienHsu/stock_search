@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -15,6 +17,7 @@ from src.data.price_fetcher import fetch_prices_for_strategy
 from src.data.ticker_utils import normalize_ticker
 from src.notifications import send_notification
 from src.repositories.scheduler_run_repo import finish_run, start_run
+from src.repositories.strategy_scan_events_repo import list_scan_events
 from src.repositories.watchlist_repo import get_watchlist
 
 JOB_NAME = "weekly_digest"
@@ -33,7 +36,7 @@ def run_weekly_digest() -> dict[str, Any]:
             if not items:
                 continue
 
-            rows = build_weekly_digest_rows(items)
+            rows = build_weekly_digest_rows(items, user_id=user_id)
             body, used_ai = build_weekly_digest_body(user_id, rows)
             send_notification(
                 user_id,
@@ -59,11 +62,13 @@ def run_weekly_digest() -> dict[str, Any]:
 def build_weekly_digest_rows(
     items: list[dict[str, Any]],
     *,
+    user_id: str | None = None,
     strategy_id: str = "strategy_d",
     strategy_params: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     strategy = get_strategy(strategy_id)
     params = {**strategy.default_params(), **(strategy_params or {})}
+    event_log = _events_by_ticker(user_id, strategy_id) if user_id else {}
     rows: list[dict[str, Any]] = []
     for item in items:
         ticker = normalize_ticker(str(item.get("ticker", "")))
@@ -75,7 +80,7 @@ def build_weekly_digest_rows(
             if df.empty:
                 rows.append(_error_row(ticker, name, "無價格資料"))
                 continue
-            rows.append(_digest_row(ticker, name, df, strategy, params))
+            rows.append(_digest_row(ticker, name, df, strategy, params, event_log.get(ticker)))
         except Exception as exc:
             rows.append(_error_row(ticker, name, str(exc)[:80]))
     return rows
@@ -134,7 +139,14 @@ def fallback_weekly_digest_body(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _digest_row(ticker: str, name: str, df: pd.DataFrame, strategy, params: dict[str, Any]) -> dict[str, Any]:
+def _digest_row(
+    ticker: str,
+    name: str,
+    df: pd.DataFrame,
+    strategy,
+    params: dict[str, Any],
+    events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     clean_df = df.dropna(subset=["close"]).reset_index(drop=True)
     if clean_df.empty:
         return _error_row(ticker, name, "無有效收盤價")
@@ -146,17 +158,23 @@ def _digest_row(ticker: str, name: str, df: pd.DataFrame, strategy, params: dict
     current_close = float(latest["close"])
     weekly_return_pct = ((current_close / start_close) - 1) * 100 if start_close else 0.0
 
-    signals = strategy.compute(clean_df, params)
-    latest_date = pd.to_datetime(str(latest["date"])[:10], errors="coerce")
-    cutoff = latest_date - pd.Timedelta(days=7) if not pd.isna(latest_date) else None
-    recent = []
-    for signal in signals:
-        signal_date = pd.to_datetime(str(signal.date)[:10], errors="coerce")
-        if cutoff is not None and not pd.isna(signal_date) and signal_date >= cutoff:
-            recent.append(signal)
+    if events is not None:
+        recent_signals = _format_event_signals(events)
+        buy_dates = [event["date"] for event in events if event.get("signal_type") == "buy" and event.get("status") == "triggered"]
+        sell_dates = [event["date"] for event in events if event.get("signal_type") == "sell" and event.get("status") == "triggered"]
+    else:
+        signals = strategy.compute(clean_df, params)
+        latest_date = pd.to_datetime(str(latest["date"])[:10], errors="coerce")
+        cutoff = latest_date - pd.Timedelta(days=7) if not pd.isna(latest_date) else None
+        recent = []
+        for signal in signals:
+            signal_date = pd.to_datetime(str(signal.date)[:10], errors="coerce")
+            if cutoff is not None and not pd.isna(signal_date) and signal_date >= cutoff:
+                recent.append(signal)
 
-    buy_dates = [signal.date[:10] for signal in signals if signal.signal_type == "buy"]
-    sell_dates = [signal.date[:10] for signal in signals if signal.signal_type == "sell"]
+        buy_dates = [signal.date[:10] for signal in signals if signal.signal_type == "buy"]
+        sell_dates = [signal.date[:10] for signal in signals if signal.signal_type == "sell"]
+        recent_signals = _format_recent_signals(recent)
     return {
         "ticker": ticker,
         "name": name,
@@ -165,7 +183,7 @@ def _digest_row(ticker: str, name: str, df: pd.DataFrame, strategy, params: dict
         "start_close": round(start_close, 2),
         "current_close": round(current_close, 2),
         "weekly_return_pct": round(weekly_return_pct, 2),
-        "recent_signals": _format_recent_signals(recent),
+        "recent_signals": recent_signals,
         "last_buy_date": max(buy_dates) if buy_dates else "—",
         "last_sell_date": max(sell_dates) if sell_dates else "—",
     }
@@ -181,5 +199,32 @@ def _format_recent_signals(signals: list) -> str:
     )
 
 
+def _events_by_ticker(user_id: str | None, strategy_id: str) -> dict[str, list[dict[str, Any]]]:
+    if not user_id:
+        return {}
+    since = (date.today() - timedelta(days=7)).isoformat()
+    events = list_scan_events(user_id, since_date=since, strategy_id=strategy_id)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        grouped.setdefault(str(event.get("ticker") or "").upper(), []).append(event)
+    return grouped
+
+
+def _format_event_signals(events: list[dict[str, Any]]) -> str:
+    triggered = [event for event in events if event.get("status") == "triggered"]
+    if not triggered:
+        return "無"
+    labels = {"buy": "買進", "sell": "賣出"}
+    ordered = sorted(triggered, key=lambda event: (str(event.get("date") or ""), str(event.get("signal_type") or "")))
+    return "、".join(
+        f"{labels.get(str(event.get('signal_type')), str(event.get('signal_type')))} {str(event.get('date'))[:10]}"
+        for event in ordered
+    )
+
+
 def _error_row(ticker: str, name: str, error: str) -> dict[str, Any]:
     return {"ticker": ticker, "name": name, "error": error}
+
+
+if __name__ == "__main__":
+    print(json.dumps(run_weekly_digest(), ensure_ascii=False, default=str))

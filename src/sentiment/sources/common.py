@@ -11,14 +11,17 @@ USER_AGENT = (
 )
 
 
-def fetch_json(url: str, *, timeout: int = 5) -> Any:
+def fetch_json(url: str, *, timeout: int = 5, headers: dict[str, str] | None = None) -> Any:
+    request_headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    }
+    if headers:
+        request_headers.update(headers)
     request = Request(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json,text/plain,*/*",
-            "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-        },
+        headers=request_headers,
     )
     with urlopen(request, timeout=timeout) as response:
         charset = response.headers.get_content_charset() or "utf-8"

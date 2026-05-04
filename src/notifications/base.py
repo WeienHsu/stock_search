@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.notifications.dry_run_sink import append_notification, is_dry_run_enabled
 from src.repositories.notification_settings_repo import channels_for
 
 
@@ -20,6 +21,24 @@ def send_notification(
     severity: str = "info",
     event_type: str = "price_alert",
 ) -> list[NotificationResult]:
+    requested = channels_for(user_id, event_type)
+    results: list[NotificationResult] = []
+
+    if is_dry_run_enabled():
+        for name in requested or ["inbox"]:
+            append_notification(
+                {
+                    "user_id": user_id,
+                    "channel": name,
+                    "subject": subject,
+                    "body": body,
+                    "severity": severity,
+                    "event_type": event_type,
+                }
+            )
+            results.append(NotificationResult(name, True))
+        return results
+
     from src.notifications.email import EmailChannel
     from src.notifications.inbox import InboxChannel
     from src.notifications.line_messaging import LineMessagingChannel
@@ -31,8 +50,6 @@ def send_notification(
         "line": LineMessagingChannel(),
         "inbox": InboxChannel(),
     }
-    requested = channels_for(user_id, event_type)
-    results: list[NotificationResult] = []
 
     for name in requested:
         channel = channel_map.get(name)
