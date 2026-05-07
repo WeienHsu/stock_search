@@ -156,6 +156,22 @@ def _kd_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
     ]
 
 
+def _volume_bar_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
+    P = _get_palette()
+    if "volume" not in df.columns:
+        return []
+    open_col = pd.to_numeric(df.get("open", df["close"]), errors="coerce")
+    close_col = pd.to_numeric(df["close"], errors="coerce")
+    colors = [P.RED if float(c) >= float(o) else P.GREEN for c, o in zip(close_col.fillna(0), open_col.fillna(0))]
+    return [go.Bar(
+        x=df["date"],
+        y=pd.to_numeric(df["volume"], errors="coerce"),
+        marker_color=colors,
+        name="成交量",
+        showlegend=False,
+    )]
+
+
 def _bias_traces(df: pd.DataFrame, period: int) -> list[go.BaseTraceType]:
     P = _get_palette()
     col = f"bias_{period}"
@@ -245,6 +261,7 @@ def build_combined_chart(
     show_signals: bool = True,
     show_candlestick_patterns: bool = False,
     show_volume_profile: bool = False,
+    show_volume_bar: bool = False,
     ma_cross_events: list[dict] | None = None,
     granularity: str = "1d",
 ) -> go.Figure:
@@ -265,15 +282,18 @@ def build_combined_chart(
         panels.append("kd")
     if show_bias and f"bias_{bias_period}" in df.columns:
         panels.append("bias")
+    if show_volume_bar and "volume" in df.columns:
+        panels.append("volume")
 
     n_rows = len(panels)
-    
+
     # ── Define ideal pixel heights for each panel type ──
     panel_heights_map = {
         "main": 450,
         "macd": 250,
         "kd": 180,
         "bias": 180,
+        "volume": 130,
     }
     raw_heights = [panel_heights_map[p] for p in panels]
     total_height = sum(raw_heights) + 50  # +50 for top/bottom margins
@@ -284,6 +304,7 @@ def build_combined_chart(
         "macd": "MACD",
         "kd": "KD",
         "bias": f"乖離率 (MA{bias_period})",
+        "volume": "日成交量",
     }
     fig = make_subplots(
         rows=n_rows, cols=1,
@@ -317,6 +338,9 @@ def build_combined_chart(
             for trace in _bias_traces(df, bias_period):
                 fig.add_trace(trace, row=row_idx, col=1)
             fig.add_hline(y=0, line_color=P.BORDER, line_width=1, row=row_idx, col=1)
+        elif panel == "volume":
+            for trace in _volume_bar_traces(df):
+                fig.add_trace(trace, row=row_idx, col=1)
 
     date_set = set(df["date"].astype(str)) if not df.empty else set()
     new_annotations = []

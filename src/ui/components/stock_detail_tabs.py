@@ -14,9 +14,11 @@ from src.data.news_fetcher import fetch_news
 from src.data.revenue_fetcher import fetch_monthly_revenue
 from src.data.sentiment_analyzer import analyze_sentiment
 from src.repositories.source_health_repo import format_health_summary, get_source_health
+from src.sentiment import aggregate_sentiment
 from src.ui.components.chip_panel import render_chip_panel
 from src.ui.components.intraday_tick_chart import render_intraday_tick_chart
 from src.ui.components.news_card import render_news_section
+from src.ui.components.sentiment_panel import render_sentiment_panel
 from src.ui.components.source_health_badge import render_source_health_badge
 
 
@@ -94,6 +96,11 @@ def _render_news_tab(ticker: str, user_id: str) -> None:
     except Exception as exc:
         st.info(f"新聞資料暫不可用：{exc}")
         articles, sentiment = [], {"score": 0.0, "label": "neutral", "article_count": 0}
+    try:
+        aggregate = aggregate_sentiment(ticker, articles)
+        render_sentiment_panel(aggregate)
+    except Exception:
+        pass
     render_news_section(articles, sentiment, ticker=ticker, user_id=user_id)
 
 

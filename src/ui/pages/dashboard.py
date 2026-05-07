@@ -19,8 +19,10 @@ from src.indicators.ma import add_ma
 from src.indicators.ma_analysis import DEFAULT_MA_PERIODS, ma_cross_signal, summarize_ma_state
 from src.indicators.macd import add_macd
 from src.analysis.trend_detector import detect_hh_hl, detect_neckline, trend_label
+from src.indicators.volume_profile_context import summarize_vp_context
 from src.strategies.strategy_d import prepare_df, diagnose_strategy_d, diagnose_strategy_d_sell
 from src.ui.charts.kline_chart import build_combined_chart, render_combined_chart, SignalLayer
+from src.ui.components.integrated_signal_panel import render_integrated_signal
 from src.ui.components.chip_panel import render_chip_panel
 from src.ui.components.news_card import render_news_section
 from src.ui.components.sentiment_panel import render_sentiment_panel
@@ -190,9 +192,10 @@ def render(cfg: dict, user_id: str) -> None:
         uirevision=f"{ticker}_{period}_{nonce}",
         signal_layers=chart_signal_layers,
         show_signals=True,
-        show_candlestick_patterns=bool(cfg.get("show_candlestick_patterns", True)),
-        show_volume_profile=bool(cfg.get("show_volume_profile", False)),
-        ma_cross_events=_recent_ma_cross_events(chart_df) if cfg.get("show_ma_cross_labels", True) else [],
+        show_candlestick_patterns=bool(cfg.get("show_candlestick_patterns", False)),
+        show_volume_profile=bool(cfg.get("show_volume_profile", True)),
+        show_volume_bar=bool(cfg.get("show_volume_bar", True)),
+        ma_cross_events=_recent_ma_cross_events(chart_df) if cfg.get("show_ma_cross_labels", False) else [],
         granularity=cfg.get("kline_granularity", "1d"),
     )
     render_combined_chart(
@@ -207,12 +210,32 @@ def render(cfg: dict, user_id: str) -> None:
     )
     st.caption("提示：框選可縮放 X 軸，平移或縮放後價格 Y 軸會依可視範圍自動調整。底部滑桿可查看更早歷史。點擊 ↩ 重置 或圖表右上角「Reset axes」可回到選定期間。")
 
+    # ── Compute shared context for integrated panel ──
+    vp_ctx: dict | None = None
+    try:
+        vp_ctx = summarize_vp_context(df_full)
+    except Exception:
+        pass
+
+    ma_summary = _get_ma_summary(df_full)
+
+    # ── Integrated signal panel: Strategy D + MA side-by-side ──
+    render_integrated_signal(df_full, ma_summary, signal_layers, vp_ctx)
+
+    # ── MA analysis details (collapsible, full panel) ──
     _render_ma_analysis_panel(df_full)
     render_chip_panel(ticker)
 
     # ── Strategy D condition diagnosis (Strategy D-specific, shown only when active) ──
     if "strategy_d" in active_strategies:
         st.markdown("---")
+        if vp_ctx:
+            poc_dist = vp_ctx.get("poc_distance_pct")
+            in_zone = vp_ctx.get("in_support_zone", False)
+            if poc_dist is not None:
+                sign = "+" if float(poc_dist) >= 0 else ""
+                zone_label = "✓ 支撐帶內" if in_zone else "— 非支撐帶"
+                st.caption(f"VP 情境 ▸ 距最近 POC：**{sign}{float(poc_dist):.2f}%**　|　{zone_label}")
         with st.expander("🔍 Strategy D 條件診斷", expanded=False):
             if df_s is None:
                 st.warning("Strategy D 指標計算失敗，無法執行診斷。")
@@ -342,6 +365,13 @@ def _render_ai_signal_explainer(
     if st.session_state.get(key):
         with st.expander("AI 訊號解讀", expanded=True):
             st.markdown(st.session_state[key])
+
+
+def _get_ma_summary(df_full: pd.DataFrame) -> dict:
+    try:
+        return summarize_ma_state(df_full, DEFAULT_MA_PERIODS)
+    except Exception:
+        return {"score": 0, "stars": "—", "directions": {}, "month_above_quarter": False, "recent_crosses": []}
 
 
 def _render_ma_analysis_panel(df_full: pd.DataFrame) -> None:

@@ -160,9 +160,10 @@ def render_sidebar(user_id: str) -> dict:
     show_kd   = st.sidebar.checkbox("KD",   value=prefs.get("show_kd",   True))
     show_bias = st.sidebar.checkbox("乖離率", value=prefs.get("show_bias", True))
     show_news = st.sidebar.checkbox("新聞情緒", value=prefs.get("show_news", True))
-    show_candlestick_patterns = st.sidebar.checkbox("K線形態", value=prefs.get("show_candlestick_patterns", True))
-    show_volume_profile = st.sidebar.checkbox("Volume Profile", value=prefs.get("show_volume_profile", False))
-    show_ma_cross_labels = st.sidebar.checkbox("MA交叉標註", value=prefs.get("show_ma_cross_labels", True))
+    show_volume_bar = st.sidebar.checkbox("日成交量", value=prefs.get("show_volume_bar", True))
+    show_volume_profile = st.sidebar.checkbox("Volume Profile", value=prefs.get("show_volume_profile", True))
+    show_candlestick_patterns = st.sidebar.checkbox("K線形態", value=prefs.get("show_candlestick_patterns", False))
+    show_ma_cross_labels = st.sidebar.checkbox("MA交叉標註", value=prefs.get("show_ma_cross_labels", False))
 
     strategy_toggles = {}
     for strategy_id in all_strategies:
@@ -310,6 +311,7 @@ def render_sidebar(user_id: str) -> dict:
         "show_kd": show_kd,
         "show_bias": show_bias,
         "show_news": show_news,
+        "show_volume_bar": show_volume_bar,
         "show_candlestick_patterns": show_candlestick_patterns,
         "show_volume_profile": show_volume_profile,
         "show_ma_cross_labels": show_ma_cross_labels,

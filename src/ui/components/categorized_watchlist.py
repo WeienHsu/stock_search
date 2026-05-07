@@ -7,6 +7,7 @@ from src.data.ticker_utils import normalize_ticker
 from src.data.price_fetcher import fetch_quote
 from src.repositories.watchlist_category_repo import is_primary_watchlist_category, list_categories, list_items
 from src.repositories.watchlist_repo import get_watchlist
+from src.ui.components.sidebar_search import build_search_candidates, format_candidate, fuzzy_ticker_matches
 
 
 def render_categorized_watchlist(user_id: str) -> str | None:
@@ -15,9 +16,7 @@ def render_categorized_watchlist(user_id: str) -> str | None:
         st.info("尚未建立分類自選")
         return None
 
-    selected_from_picker = _render_ticker_picker(user_id, categories)
-    selected_from_input = _render_direct_ticker_input()
-    selected_ticker = selected_from_input or selected_from_picker
+    selected_ticker = _render_smart_ticker_search(user_id, categories)
 
     tabs = st.tabs([category["name"] for category in categories])
     for tab, category in zip(tabs, categories):
@@ -61,6 +60,70 @@ def build_watchlist_table(items: list[dict], *, include_quotes: bool = True) -> 
             "PE": "—",
         })
     return pd.DataFrame(rows)
+
+
+def _render_smart_ticker_search(user_id: str, categories: list[dict]) -> str | None:
+    """Single smart search box: watchlist (⭐) + recent (🕘) + fuzzy match."""
+    watchlist = get_watchlist(user_id)
+    candidates = build_search_candidates(watchlist, [])
+
+    # Build ordered option list: watchlist first (⭐), then recent non-duplicate tickers (🕘)
+    recent: list[str] = list(st.session_state.get("workstation_recent_tickers", []))
+    watchlist_tickers = {c["ticker"].upper() for c in candidates}
+
+    option_labels: list[str] = []
+    option_tickers: list[str] = []
+    for c in candidates:
+        label = f"⭐ {c['ticker']}" + (f" {c.get('name','')}" if c.get("name") else "")
+        option_labels.append(label)
+        option_tickers.append(c["ticker"].upper())
+    for t in recent:
+        t_up = t.upper()
+        if t_up not in watchlist_tickers:
+            option_labels.append(f"🕘 {t_up}")
+            option_tickers.append(t_up)
+
+    active = str(st.session_state.get("workstation_active_ticker") or "").upper()
+
+    # selectbox supports built-in search/filter when user types
+    selected_label = st.selectbox(
+        "搜尋並切換股票",
+        options=option_labels if option_labels else [""],
+        index=_find_index(active, option_tickers),
+        key=f"workstation_smart_search_{active or 'default'}",
+        accept_new_options=True,
+    )
+    st.caption("輸入或選擇股票代碼以切換看盤畫面（不影響自選清單組成）")
+
+    if not selected_label:
+        return None
+
+    # Extract raw ticker from label (strip leading emoji prefix)
+    raw = str(selected_label).strip()
+    for prefix in ("⭐ ", "🕘 "):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
+    # Take only the first token (ticker part, before any name)
+    raw_ticker = raw.split()[0] if raw.split() else raw
+    ticker = normalize_ticker(raw_ticker)
+    if not ticker:
+        return None
+
+    # Update recent list (cap at 5, no duplicates)
+    if ticker not in watchlist_tickers:
+        recent_updated = [t for t in recent if t.upper() != ticker]
+        recent_updated.insert(0, ticker)
+        st.session_state["workstation_recent_tickers"] = recent_updated[:5]
+
+    return ticker
+
+
+def _find_index(active: str, option_tickers: list[str]) -> int:
+    try:
+        return option_tickers.index(active)
+    except ValueError:
+        return 0
 
 
 def _render_ticker_picker(user_id: str, categories: list[dict]) -> str | None:

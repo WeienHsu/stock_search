@@ -7,6 +7,7 @@ from src.data.price_fetcher import fetch_prices_for_strategy
 from src.data.ticker_utils import normalize_ticker
 from src.indicators.ma import add_ma
 from src.indicators.ma_analysis import DEFAULT_MA_PERIODS, ma_alignment_score
+from src.indicators.volume_profile_context import summarize_vp_context
 from src.analysis.trend_detector import detect_hh_hl, trend_label
 
 _GREEN_DAYS = 3
@@ -42,6 +43,10 @@ def scan_watchlist(
             ma_score = ma_alignment_score(df_ma, DEFAULT_MA_PERIODS)
             month_above_quarter = _latest_ma_value(df_ma, 20) > _latest_ma_value(df_ma, 60)
             trend = trend_label(detect_hh_hl(df_ma.tail(180), pivot_window=5)["trend"])
+            try:
+                vp_ctx = summarize_vp_context(df, close=current_close)
+            except Exception:
+                vp_ctx = {"poc_distance_pct": None, "in_support_zone": False}
             signals = strategy.compute(df, strategy_params)
 
             buy_signals = [s for s in signals if s.signal_type == "buy"]
@@ -70,6 +75,8 @@ def scan_watchlist(
                 "trend": trend,
                 "buy_status": buy_status,
                 "sell_status": sell_status,
+                "poc_distance_pct": vp_ctx.get("poc_distance_pct"),
+                "in_support_zone": bool(vp_ctx.get("in_support_zone", False)),
             })
 
         except Exception as e:
@@ -109,6 +116,8 @@ def _error_row(ticker: str, name: str, err: str) -> dict:
         "month_above_quarter": False,
         "trend": "—",
         "buy_status": f"❌ {err}", "sell_status": "—",
+        "poc_distance_pct": None,
+        "in_support_zone": False,
     }
 
 

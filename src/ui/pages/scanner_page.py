@@ -129,14 +129,15 @@ def _sort_results(result_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _render_result_rows(result_df: pd.DataFrame) -> None:
-    header = st.columns([1.0, 1.7, 0.9, 1.3, 1.1, 1.3, 1.1, 0.9, 0.8, 0.8])
-    labels = ["代號", "名稱", "現價", "買進狀態", "最近買進日", "賣出狀態", "最近賣出日", "多頭排列", "月>季", "趨勢"]
+    col_widths = [1.0, 1.7, 0.9, 1.3, 1.1, 1.3, 1.1, 0.9, 0.8, 0.8, 0.85, 0.7]
+    labels = ["代號", "名稱", "現價", "買進狀態", "最近買進日", "賣出狀態", "最近賣出日", "多頭排列", "月>季", "趨勢", "距POC%", "支撐帶"]
+    header = st.columns(col_widths)
     for col, label in zip(header, labels):
         col.markdown(f"**{label}**")
 
     for idx, row in result_df.iterrows():
         ticker = str(row["ticker"])
-        cols = st.columns([1.0, 1.7, 0.9, 1.3, 1.1, 1.3, 1.1, 0.9, 0.8, 0.8])
+        cols = st.columns(col_widths)
         cols[0].button(
             ticker,
             key=f"scanner_open_{idx}_{ticker}",
@@ -154,6 +155,13 @@ def _render_result_rows(result_df: pd.DataFrame) -> None:
         cols[7].markdown(("✅" if bool(row.get("bullish_alignment", False)) else "❌") + f" {score}/4")
         cols[8].markdown("✅" if bool(row.get("month_above_quarter", False)) else "❌")
         cols[9].markdown(str(row.get("trend", "—")))
+        poc_dist = row.get("poc_distance_pct")
+        if poc_dist is None:
+            cols[10].markdown("—")
+        else:
+            sign = "+" if float(poc_dist) >= 0 else ""
+            cols[10].markdown(f"{sign}{float(poc_dist):.1f}%")
+        cols[11].markdown("✓" if bool(row.get("in_support_zone", False)) else "—")
 
 
 def _queue_dashboard_nav(ticker: str) -> None:
