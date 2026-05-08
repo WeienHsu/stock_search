@@ -1,6 +1,14 @@
 import pandas as pd
 import numpy as np
 import pytest
+import streamlit as st
+
+
+@pytest.fixture(autouse=True)
+def clear_streamlit_cache():
+    st.cache_data.clear()
+    yield
+    st.cache_data.clear()
 
 
 @pytest.fixture

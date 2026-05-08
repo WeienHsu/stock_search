@@ -27,7 +27,7 @@ def _strategy_d_summary(
     today_sell = any(d[:10] == today_str for d in sell_dates)
 
     if today_buy:
-        st.success("🟢 今日有買進訊號")
+        st.html('<span class="signal-buy" role="status" aria-label="今日有買進訊號">▲ 今日有買進訊號</span>')
     elif last_buy:
         days_since = (pd.Timestamp(today_str) - pd.Timestamp(last_buy)).days
         st.info(f"最近買進：{last_buy}（{days_since} 天前）")
@@ -35,7 +35,7 @@ def _strategy_d_summary(
         st.info("無近期買進訊號")
 
     if today_sell:
-        st.warning("🔴 今日有賣出訊號")
+        st.html('<span class="signal-sell" role="status" aria-label="今日有賣出訊號">▼ 今日有賣出訊號</span>')
     elif last_sell:
         days_since = (pd.Timestamp(today_str) - pd.Timestamp(last_sell)).days
         st.info(f"最近賣出：{last_sell}（{days_since} 天前）")
@@ -104,12 +104,13 @@ def render_integrated_signal(
     ma_summary: dict,
     signal_layers: list,
     vp_ctx: dict | None = None,
+    *,
+    use_expander: bool = True,
 ) -> None:
     """Render two-column integrated view: Strategy D (left) + MA analysis (right) + verdict."""
     today_str = str(df_full["date"].iloc[-1])[:10] if not df_full.empty else ""
 
-    st.markdown("---")
-    with st.expander("📊 整合訊號判讀", expanded=True):
+    def _render_content() -> None:
         col_d, col_ma = st.columns(2)
 
         with col_d:
@@ -122,3 +123,10 @@ def render_integrated_signal(
 
         verdict = _combined_verdict(ma_summary, signal_layers, vp_ctx, today_str)
         st.info(verdict)
+
+    if use_expander:
+        st.divider()
+        with st.expander("📊 整合訊號判讀", expanded=True):
+            _render_content()
+    else:
+        _render_content()

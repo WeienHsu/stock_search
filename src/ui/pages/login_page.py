@@ -9,7 +9,7 @@ def render() -> None:
     col = st.columns([1, 2, 1])[1]
     with col:
         st.markdown("## 📈 Stock Intelligence")
-        st.markdown("---")
+        st.divider()
         tab_login, tab_register = st.tabs(["登入", "註冊新帳號"])
 
         with tab_login:

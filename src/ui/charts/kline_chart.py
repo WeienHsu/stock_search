@@ -11,6 +11,7 @@ import streamlit.components.v1 as components
 from src.indicators.candlestick_patterns import detect_candlestick_patterns
 from src.indicators.ma_analysis import format_inline_label
 from src.indicators.volume_profile import compute_volume_profile
+from src.ui.theme.plotly_template import apply_chart_theme
 
 
 @dataclass
@@ -76,22 +77,7 @@ def _get_palette():
 
 
 def _apply_layout(fig: go.Figure, title: str = "") -> None:
-    P = _get_palette()
-    fig.update_layout(
-        paper_bgcolor=P.BACKGROUND,
-        plot_bgcolor=P.BACKGROUND,
-        font=dict(color=P.TEXT_PRIMARY, size=12),
-        title=dict(text=title, font=dict(size=15, color=P.TEXT_PRIMARY)),
-        legend=dict(bgcolor=P.BACKGROUND, bordercolor=P.BORDER, borderwidth=1, font=dict(size=11)),
-        margin=dict(l=55, r=20, t=40, b=10),
-        hovermode="x",
-    )
-    fig.update_xaxes(
-        showgrid=True, gridcolor=P.BORDER, zeroline=False,
-        showspikes=True, spikemode="across", spikesnap="cursor",
-        spikethickness=1, spikedash="solid", spikecolor="#888",
-    )
-    fig.update_yaxes(showgrid=True, gridcolor=P.BORDER, zeroline=False, automargin=True)
+    apply_chart_theme(fig, title=title)
 
 
 # ── Trace builders ──

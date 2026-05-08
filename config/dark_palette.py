@@ -1,12 +1,16 @@
 BACKGROUND = "#1A1D21"
 SURFACE    = "#252830"
 BORDER     = "#3A3F4B"
+BORDER_STRONG = "#6F7888"
 
 TEXT_PRIMARY   = "#E8EAF0"
 TEXT_SECONDARY = "#9AA0B0"
+TEXT_TERTIARY  = "#9098A8"
 
-GREEN  = "#4CAF82"
-RED    = "#E05C5C"
+GREEN  = "#4CAF82"   # 跌 / 賣出訊號
+RED    = "#E85820"   # 漲 / 買進訊號
+SEMANTIC_UP_TEXT   = RED
+SEMANTIC_DOWN_TEXT = GREEN
 BLUE   = "#5B9BD5"
 ORANGE = "#E8A45A"
 PURPLE = "#A98ECC"
@@ -26,6 +30,6 @@ MA_COLORS = {
 PLOTLY_THEME = {
     "paper_bgcolor": BACKGROUND,
     "plot_bgcolor":  BACKGROUND,
-    "font":          {"color": TEXT_PRIMARY, "family": "Inter, sans-serif", "size": 12},
+    "font":          {"color": TEXT_PRIMARY, "family": '-apple-system, "PingFang TC", "Microsoft JhengHei", Inter, sans-serif', "size": 12},
     "gridcolor":     BORDER,
 }

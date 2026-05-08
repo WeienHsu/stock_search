@@ -8,12 +8,11 @@ from src.data.chip_fetcher import fetch_chip_snapshot, is_taiwan_ticker
 from src.repositories.chip_snapshot_repo import list_recent_snapshots
 
 
-def render_chip_panel(ticker: str) -> None:
+def render_chip_panel(ticker: str, *, use_expander: bool = True) -> None:
     if not is_taiwan_ticker(ticker):
         return
 
-    st.markdown("---")
-    with st.expander("籌碼面（外資 / 投信 / 融資）", expanded=True):
+    def _render_content() -> None:
         with st.spinner("載入籌碼資料…"):
             try:
                 data = fetch_chip_snapshot(ticker)
@@ -45,6 +44,13 @@ def render_chip_panel(ticker: str) -> None:
                 st.plotly_chart(_historical_margin_chart(history), use_container_width=True)
         else:
             _render_current_snapshot(institutional, margin, data)
+
+    if use_expander:
+        st.divider()
+        with st.expander("籌碼面（外資 / 投信 / 融資）", expanded=True):
+            _render_content()
+    else:
+        _render_content()
 
 
 def _render_summary(summary: dict, institutional: pd.DataFrame, margin: pd.DataFrame) -> None:

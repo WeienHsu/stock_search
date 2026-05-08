@@ -27,11 +27,10 @@ def render(user_id: str) -> None:
 
 def _render_price_alerts(user_id: str) -> None:
     st.markdown("### 新增價格警示")
-    col_ticker, col_direction, col_threshold, col_button = st.columns([2, 2, 2, 1])
+    col_ticker, col_direction, col_threshold, col_button = st.columns([2, 2, 2, 1], vertical_alignment="bottom")
     ticker = col_ticker.text_input("Ticker", placeholder="TSLA / 2330.TW", key="alert_ticker")
     direction_label = col_direction.selectbox("條件", list(_DIRECTION_LABELS), key="alert_direction")
     threshold = col_threshold.number_input("價格", min_value=0.0, value=0.0, step=1.0, key="alert_threshold")
-    col_button.markdown("<div style='padding-top:1.6rem'></div>", unsafe_allow_html=True)
     if col_button.button("新增", use_container_width=True):
         normalized = normalize_ticker(ticker)
         if not normalized or threshold <= 0:
@@ -46,7 +45,7 @@ def _render_price_alerts(user_id: str) -> None:
             st.success("已新增價格警示")
             st.rerun()
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### 既有警示")
     alerts = alert_repo.list_alerts(user_id)
     if not alerts:

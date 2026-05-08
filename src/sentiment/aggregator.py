@@ -3,6 +3,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
+import streamlit as st
+
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
 from src.sentiment.scorers.vader import label_for_score
 from src.sentiment.sources.news_finnhub import source_from_articles
@@ -14,6 +16,27 @@ SourceFetcher = Callable[[str], dict[str, Any]]
 
 
 def aggregate_sentiment(
+    ticker: str,
+    articles: list[dict[str, Any]] | None = None,
+    *,
+    ttl_seconds: int = 300,
+    fetchers: dict[str, SourceFetcher] | None = None,
+) -> dict[str, Any]:
+    if fetchers is None:
+        return _aggregate_sentiment_cached(ticker, articles or [], ttl_seconds)
+    return _aggregate_sentiment_uncached(ticker, articles, ttl_seconds=ttl_seconds, fetchers=fetchers)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _aggregate_sentiment_cached(
+    ticker: str,
+    articles: list[dict[str, Any]],
+    ttl_seconds: int = 300,
+) -> dict[str, Any]:
+    return _aggregate_sentiment_uncached(ticker, articles, ttl_seconds=ttl_seconds, fetchers=None)
+
+
+def _aggregate_sentiment_uncached(
     ticker: str,
     articles: list[dict[str, Any]] | None = None,
     *,

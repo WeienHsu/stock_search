@@ -17,7 +17,7 @@ def test_record_scan_events_writes_buy_and_sell(monkeypatch):
             "sell_signal": False,
             "last_buy_date": "2026-05-04",
             "last_sell_date": "—",
-            "buy_status": "🟢 買進觸發",
+            "buy_status": "▲ 買進觸發",
             "sell_status": "⚪ 無訊號",
             "current_close": 100.0,
         }

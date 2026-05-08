@@ -22,7 +22,7 @@ def render_source_health_badge(source_id: str, label: str | None = None) -> None
     title = format_health_summary(health)
     safe_title = html.escape(title, quote=True)
     safe_label = html.escape(label_text)
-    st.markdown(
+    st.html(
         f"""
         <span title="{safe_title}" style="
             display:inline-block;
@@ -35,6 +35,5 @@ def render_source_health_badge(source_id: str, label: str | None = None) -> None
             margin-right:0.35rem;
             margin-bottom:0.25rem;
         ">{safe_label}</span>
-        """,
-        unsafe_allow_html=True,
+        """
     )

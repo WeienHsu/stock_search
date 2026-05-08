@@ -5,6 +5,8 @@ from src.core.sorting import sort_watchlist_items
 from src.core.strategy_registry import list_strategies
 from src.repositories.watchlist_repo import get_watchlist
 from src.scanner.watchlist_scanner import scan_watchlist
+from src.ui.components.data_table import ColumnSpec, render_data_table
+from src.ui.nav.page_keys import DASHBOARD, LABEL_BY_KEY
 
 import src.strategies.strategy_d   # ensure registration
 import src.strategies.strategy_kd  # ensure registration
@@ -36,7 +38,7 @@ def render(cfg: dict, user_id: str) -> None:
         st.info("自選清單為空，請先至「設定」頁面新增股票。")
         return
 
-    col_strat, col_btn = st.columns([3, 1])
+    col_strat, col_btn = st.columns([3, 1], vertical_alignment="bottom")
     with col_strat:
         available = list_strategies()
         strategy_id = st.selectbox(
@@ -47,7 +49,6 @@ def render(cfg: dict, user_id: str) -> None:
             key="scanner_strategy",
         )
     with col_btn:
-        st.markdown("<div style='padding-top:1.6rem'></div>", unsafe_allow_html=True)
         run_scan = st.button("開始掃描", use_container_width=True)
 
     tickers_display = ", ".join(i["ticker"] for i in items)
@@ -87,7 +88,7 @@ def render(cfg: dict, user_id: str) -> None:
     if not triggered_sell.empty:
         st.warning(f"**{len(triggered_sell)}** 檔觸發賣出訊號（{strategy_label}）")
 
-    _render_result_rows(result_df)
+    _render_result_table(result_df)
 
 
 def _sort_results(result_df: pd.DataFrame) -> pd.DataFrame:
@@ -128,42 +129,38 @@ def _sort_results(result_df: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
-def _render_result_rows(result_df: pd.DataFrame) -> None:
-    col_widths = [1.0, 1.7, 0.9, 1.3, 1.1, 1.3, 1.1, 0.9, 0.8, 0.8, 0.85, 0.7]
-    labels = ["代號", "名稱", "現價", "買進狀態", "最近買進日", "賣出狀態", "最近賣出日", "多頭排列", "月>季", "趨勢", "距POC%", "支撐帶"]
-    header = st.columns(col_widths)
-    for col, label in zip(header, labels):
-        col.markdown(f"**{label}**")
+def _render_result_table(result_df: pd.DataFrame) -> None:
+    view = result_df.copy()
+    view["month_above_quarter_label"] = view["month_above_quarter"].map(lambda value: "是" if bool(value) else "否")
+    view["in_support_zone_label"] = view["in_support_zone"].map(lambda value: "是" if bool(value) else "—")
+    view["ma_bullish_score"] = pd.to_numeric(view["ma_bullish_score"], errors="coerce").fillna(0).astype(int)
+    view["poc_distance_pct"] = pd.to_numeric(view["poc_distance_pct"], errors="coerce")
 
-    for idx, row in result_df.iterrows():
-        ticker = str(row["ticker"])
-        cols = st.columns(col_widths)
-        cols[0].button(
-            ticker,
-            key=f"scanner_open_{idx}_{ticker}",
-            help=f"在 Dashboard 查看 {ticker}",
-            on_click=_queue_dashboard_nav,
-            args=(ticker,),
-        )
-        cols[1].markdown(str(row.get("name", "")) or "—")
-        cols[2].markdown(f"{float(row.get('current_close', 0.0)):.2f}")
-        cols[3].markdown(str(row.get("buy_status", "—")))
-        cols[4].markdown(str(row.get("last_buy_date", "—")))
-        cols[5].markdown(str(row.get("sell_status", "—")))
-        cols[6].markdown(str(row.get("last_sell_date", "—")))
-        score = int(row.get("ma_bullish_score", 0) or 0)
-        cols[7].markdown(("✅" if bool(row.get("bullish_alignment", False)) else "❌") + f" {score}/4")
-        cols[8].markdown("✅" if bool(row.get("month_above_quarter", False)) else "❌")
-        cols[9].markdown(str(row.get("trend", "—")))
-        poc_dist = row.get("poc_distance_pct")
-        if poc_dist is None:
-            cols[10].markdown("—")
-        else:
-            sign = "+" if float(poc_dist) >= 0 else ""
-            cols[10].markdown(f"{sign}{float(poc_dist):.1f}%")
-        cols[11].markdown("✓" if bool(row.get("in_support_zone", False)) else "—")
+    event = render_data_table(
+        view,
+        [
+            ColumnSpec("ticker", "代號", width="small"),
+            ColumnSpec("name", "名稱", width="medium"),
+            ColumnSpec("current_close", "現價", type="number", format="%.2f", width="small"),
+            ColumnSpec("buy_status", "買進狀態", width="medium"),
+            ColumnSpec("last_buy_date", "最近買進日", width="small"),
+            ColumnSpec("sell_status", "賣出狀態", width="medium"),
+            ColumnSpec("last_sell_date", "最近賣出日", width="small"),
+            ColumnSpec("ma_bullish_score", "多頭排列", type="progress", min_value=0, max_value=4, format="%d/4", width="small"),
+            ColumnSpec("month_above_quarter_label", "月>季", width="small"),
+            ColumnSpec("trend", "趨勢", width="small"),
+            ColumnSpec("poc_distance_pct", "距POC", type="pct", format="%+.1f%%", width="small"),
+            ColumnSpec("in_support_zone_label", "支撐帶", width="small"),
+        ],
+        key="scanner_results_table",
+        on_select=True,
+    )
+    if event.selection.rows:
+        ticker = str(view.iloc[event.selection.rows[0]]["ticker"])
+        _queue_dashboard_nav(ticker)
+        st.rerun()
 
 
 def _queue_dashboard_nav(ticker: str) -> None:
-    st.session_state["_pending_nav_page"] = "📊 Dashboard"
+    st.session_state["_pending_nav_page"] = LABEL_BY_KEY[DASHBOARD]
     st.session_state["_pending_ticker"] = ticker

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+import streamlit as st
 
 from src.data.chip_data_sources import build_default_chain
 from src.data.chip_utils import is_taiwan_ticker, market_kind, ticker_code
@@ -12,6 +13,7 @@ from src.repositories.source_health_repo import record_source_health
 _DAY = 24 * 3600
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_major_holder_snapshot(ticker: str) -> dict[str, Any]:
     if not is_taiwan_ticker(ticker):
         record_source_health("major_holder_qfiis", "unsupported", reason="僅支援台股")

@@ -89,7 +89,7 @@ def render(cfg: dict, user_id: str) -> None:
     c5.metric("MDD", f"{metrics['max_drawdown_pct']:.1f}%")
     c6.metric("Sharpe", f"{metrics['sharpe']:.2f}")
 
-    st.markdown("---")
+    st.divider()
 
     # ── Charts ──
     st.plotly_chart(build_equity_curve(bt_df), use_container_width=True,

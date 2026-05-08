@@ -49,10 +49,7 @@ def _render_source_row(source: dict) -> None:
     cols[0].markdown(f"**{title}**")
     cols[1].progress(progress, text=f"{label} {score:+.2f}")
     if status == "ok":
-        cols[2].markdown(
-            f'<span style="color:{color}; font-weight:600">{count} 筆</span>',
-            unsafe_allow_html=True,
-        )
+        cols[2].html(f'<span role="status" style="color:{color}; font-weight:600">{count} 筆</span>')
     else:
         message = str(source.get("message") or status or "暫不可用")
         cols[2].caption(message)

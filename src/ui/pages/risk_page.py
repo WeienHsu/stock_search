@@ -30,7 +30,7 @@ def render(cfg: dict, user_id: str) -> None:
         })
         st.success("已儲存")
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### 部位計算")
 
     ticker = st.text_input("股票代號", value=cfg.get("ticker", "2330.TW")).strip().upper()
@@ -70,7 +70,7 @@ def render(cfg: dict, user_id: str) -> None:
     c3.metric("每股風險", f"{sl['risk_per_share']:.2f}")
     c4.metric("ATR 值", f"{sl['atr_value']:.4f}")
 
-    st.markdown("---")
+    st.divider()
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("建議股數", f"{pos['shares']:,}")
     c2.metric("部位市值", f"{pos['position_value']:,.0f}")

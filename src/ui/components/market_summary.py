@@ -5,6 +5,7 @@ import streamlit as st
 
 from src.data.index_fetcher import index_snapshot
 from src.ui.components.index_mini_chart import build_index_sparkline
+from src.ui.nav.page_keys import LABEL_BY_KEY, MARKET
 
 
 def render_market_full_cards(
@@ -32,7 +33,7 @@ def render_market_mini_strip(
     render_index_metric(cols[1], "GTSM", gtsm)
     render_breadth_metric(cols[2], realtime_breadth or {})
     if cols[3].button("大盤總覽", use_container_width=True, key="open_market_overview"):
-        st.session_state["_pending_nav_page"] = "🌏 大盤總覽"
+        st.session_state["_pending_nav_page"] = LABEL_BY_KEY[MARKET]
         st.rerun()
 
 

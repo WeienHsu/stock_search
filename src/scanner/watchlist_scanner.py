@@ -99,7 +99,8 @@ def _classify_signals(
     last_dt = datetime.strptime(last_date_str, "%Y-%m-%d").date()
     days_ago = (today - last_dt).days
     if days_ago <= green_days:
-        return f"🟢 {label}觸發", True, last_date_str
+        marker = "▲" if label == "買進" else "▼" if label == "賣出" else "●"
+        return f"{marker} {label}觸發", True, last_date_str
     if days_ago <= yellow_days:
         return f"🟡 近期{label}", False, last_date_str
     return "⚪ 無訊號", False, last_date_str

@@ -58,6 +58,19 @@ def seconds_until_next_market_open(ticker: str, now: datetime | None = None) -> 
     return max(1, int((candidate - local_now).total_seconds()))
 
 
+def last_market_close_dt(ticker: str, now: datetime | None = None) -> datetime:
+    """Return the datetime of the most recent market close (weekends skipped back to Friday)."""
+    local_now = _local_now(ticker, now)
+    _, close_time = _session_times(ticker)
+    candidate = local_now.date()
+    today_close = datetime.combine(candidate, close_time, tzinfo=local_now.tzinfo)
+    if local_now < today_close:
+        candidate -= timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return datetime.combine(candidate, close_time, tzinfo=local_now.tzinfo)
+
+
 def cache_ttl_seconds(
     ticker: str,
     granularity: Granularity = "daily",
@@ -75,7 +88,14 @@ def cache_ttl_seconds(
         return seconds_until_next_market_open(ticker, now)
 
     if granularity == "daily":
-        return 6 * _HOUR if is_market_open(ticker, now) else _DAY
+        if is_market_open(ticker, now):
+            return 6 * _HOUR
+        # Post-close: TTL = time elapsed since last close (capped at 2 days).
+        # Any cache written before the last close has age > elapsed → stale → forces refetch.
+        # The cap prevents constant re-fetches across the weekend.
+        last_close = last_market_close_dt(ticker, now)
+        elapsed = int((_local_now(ticker, now) - last_close).total_seconds())
+        return min(max(elapsed, 60), 2 * _DAY)
 
     if granularity == "company_profile":
         return 7 * _DAY

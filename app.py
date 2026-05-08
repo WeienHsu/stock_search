@@ -12,7 +12,21 @@ from src.auth.session_cookie import (
 from src.core.current_user import current_user, current_user_is_admin
 from src.ui.theme import apply_theme
 from src.ui.sidebar import render_sidebar
-from src.ui.pages import alerts_page, dashboard, market_overview_page, settings_page, backtest_page, scanner_page, risk_page, admin_page, workstation_page
+from src.ui.nav.page_keys import (
+    ADMIN,
+    ALERTS,
+    BACKTEST,
+    DASHBOARD,
+    KEY_BY_LABEL,
+    LABEL_BY_KEY,
+    MARKET,
+    RISK,
+    SCANNER,
+    SETTINGS,
+    TODAY,
+    WORKSTATION,
+)
+from src.ui.pages import alerts_page, stock_page, market_overview_page, settings, backtest_page, scanner_page, risk_page, admin_page, workstation_page, today_page
 from src.ui.pages.login_page import render as render_login
 
 st.set_page_config(
@@ -74,85 +88,57 @@ if st.sidebar.button("登出", use_container_width=True):
     st.session_state["_clear_auth_cookie"] = True
     st.rerun()
 
-st.sidebar.markdown("---")
+st.sidebar.divider()
 
 # ── Navigation ──
-pages = ["📊 Dashboard", "🖥️ 綜合看盤", "🌏 大盤總覽", "🔍 掃描器", "🧮 回測", "🛡️ 風控", "🔔 警示", "⚙️ 設定"]
-if current_user_is_admin():
-    pages.append("👑 管理")
+def _query_value(name: str) -> str:
+    value = st.query_params.get(name, "")
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value or "")
 
-_PAGE_BY_QUERY = {
-    "dashboard": "📊 Dashboard",
-    "workstation": "🖥️ 綜合看盤",
-    "market": "🌏 大盤總覽",
-    "scanner": "🔍 掃描器",
-    "backtest": "🧮 回測",
-    "risk": "🛡️ 風控",
-    "alerts": "🔔 警示",
-    "settings": "⚙️ 設定",
-    "admin": "👑 管理",
+
+page_by_key = {
+    TODAY: st.Page(lambda: today_page.render(cfg, user_id), title="Today", icon="🌅", url_path=TODAY, default=True),
+    DASHBOARD: st.Page(lambda: stock_page.render(cfg, user_id), title="Dashboard", icon="📊", url_path=DASHBOARD),
+    WORKSTATION: st.Page(lambda: workstation_page.render(cfg, user_id), title="綜合看盤", icon="🖥️", url_path=WORKSTATION),
+    MARKET: st.Page(market_overview_page.render, title="大盤總覽", icon="🌏", url_path=MARKET),
+    SCANNER: st.Page(lambda: scanner_page.render(cfg, user_id), title="掃描器", icon="🔍", url_path=SCANNER),
+    BACKTEST: st.Page(lambda: backtest_page.render(cfg, user_id), title="回測", icon="🧮", url_path=BACKTEST),
+    RISK: st.Page(lambda: risk_page.render(cfg, user_id), title="風控", icon="🛡️", url_path=RISK),
+    ALERTS: st.Page(lambda: alerts_page.render(user_id), title="警示", icon="🔔", url_path=ALERTS),
+    SETTINGS: st.Page(lambda: settings.render(user_id), title="設定", icon="⚙️", url_path=SETTINGS),
 }
-_QUERY_BY_PAGE = {v: k for k, v in _PAGE_BY_QUERY.items()}
+if current_user_is_admin():
+    page_by_key[ADMIN] = st.Page(lambda: admin_page.render(user_id), title="管理", icon="👑", url_path=ADMIN)
 
-query_page = st.query_params.get("page", "")
-if isinstance(query_page, list):
-    query_page = query_page[0] if query_page else ""
-query_page_key = str(query_page).lower()
-query_nav = _PAGE_BY_QUERY.get(query_page_key)
-last_applied_query_page = st.session_state.get("_applied_query_page")
+navigation_sections = {
+    "Workspace": [page_by_key[TODAY], page_by_key[DASHBOARD], page_by_key[WORKSTATION], page_by_key[MARKET]],
+    "Analysis": [page_by_key[SCANNER], page_by_key[BACKTEST], page_by_key[RISK]],
+    "Settings": [page_by_key[ALERTS], page_by_key[SETTINGS]] + ([page_by_key[ADMIN]] if ADMIN in page_by_key else []),
+}
+selected_page = st.navigation(navigation_sections, position="sidebar", expanded=True)
+st.sidebar.divider()
 
 pending_nav = st.session_state.pop("_pending_nav_page", None)
 pending_ticker = st.session_state.pop("_pending_ticker", None)
-pending_applied = False
-if pending_nav in pages:
-    st.session_state["nav_page"] = pending_nav
-    query_page_key = _QUERY_BY_PAGE.get(pending_nav, query_page_key)
-    st.query_params["page"] = query_page_key
-    st.session_state["_applied_query_page"] = query_page_key
-    query_nav = pending_nav
-    last_applied_query_page = query_page_key
-    pending_applied = True
 if pending_ticker:
     st.session_state["sidebar_ticker"] = pending_ticker
     st.session_state["_applied_query_ticker"] = pending_ticker
-    st.query_params["ticker"] = pending_ticker
+target_key = KEY_BY_LABEL.get(str(pending_nav), "")
 
-if "nav_page" not in st.session_state:
-    st.session_state["nav_page"] = query_nav if query_nav in pages else pages[0]
-    st.session_state["_applied_query_page"] = query_page_key
-elif not pending_applied and query_nav in pages and query_page_key != last_applied_query_page:
-    st.session_state["nav_page"] = query_nav
-    st.session_state["_applied_query_page"] = query_page_key
+legacy_page_key = _query_value("page").lower()
+legacy_aliases = {"stock": DASHBOARD, **{key: key for key in LABEL_BY_KEY}}
+legacy_target = legacy_aliases.get(legacy_page_key, "")
+if not target_key and legacy_target:
+    target_key = legacy_target
 
-page = st.sidebar.radio(
-    "頁面",
-    pages,
-    label_visibility="collapsed",
-    key="nav_page",
-)
-page_query_key = _QUERY_BY_PAGE.get(page)
-if page_query_key and query_page_key != page_query_key:
-    st.query_params["page"] = page_query_key
-    st.session_state["_applied_query_page"] = page_query_key
-st.sidebar.markdown("---")
+if target_key and target_key in page_by_key:
+    query_params = {}
+    ticker = pending_ticker or _query_value("ticker")
+    if ticker:
+        query_params["ticker"] = ticker
+    st.switch_page(page_by_key[target_key], query_params=query_params or None)
 
 cfg = render_sidebar(user_id)
-
-if page == "📊 Dashboard":
-    dashboard.render(cfg, user_id)
-elif page == "🖥️ 綜合看盤":
-    workstation_page.render(cfg, user_id)
-elif page == "🌏 大盤總覽":
-    market_overview_page.render()
-elif page == "🔍 掃描器":
-    scanner_page.render(cfg, user_id)
-elif page == "🧮 回測":
-    backtest_page.render(cfg, user_id)
-elif page == "🛡️ 風控":
-    risk_page.render(cfg, user_id)
-elif page == "🔔 警示":
-    alerts_page.render(user_id)
-elif page == "👑 管理":
-    admin_page.render(user_id)
-else:
-    settings_page.render(user_id)
+selected_page.run()

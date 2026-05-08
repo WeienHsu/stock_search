@@ -29,7 +29,7 @@ def render(cfg: dict, user_id: str) -> None:
     if "workstation_active_ticker" not in st.session_state:
         st.session_state["workstation_active_ticker"] = default_ticker
 
-    left, right = st.columns([1, 1], gap="medium")
+    left, right = st.columns([1.2, 1], gap="medium")
 
     with left:
         with st.container():
@@ -52,7 +52,7 @@ def render(cfg: dict, user_id: str) -> None:
         ticker = str(st.session_state.get("workstation_active_ticker") or default_ticker).upper()
         with st.container():
             st.markdown(f"### {ticker} 分時 / 詳細")
-            render_intraday_tick_chart(ticker, key=f"workstation_intraday_top_{ticker}")
+            _render_intraday_fragment(ticker)
             _render_l2_placeholder()
             render_stock_detail_tabs(ticker, user_id)
 
@@ -113,6 +113,11 @@ def _render_workstation_kline(ticker: str, cfg: dict) -> None:
         key=f"workstation_chart_{ticker}_{granularity}",
         config={"displayModeBar": True, "displaylogo": False},
     )
+
+
+@st.fragment(run_every=60)
+def _render_intraday_fragment(ticker: str) -> None:
+    render_intraday_tick_chart(ticker, key=f"workstation_intraday_top_{ticker}")
 
 
 def _selected_ma_periods(cfg: dict) -> list[int]:

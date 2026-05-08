@@ -30,11 +30,11 @@ def render() -> None:
 
     render_market_full_cards(taiex, gtsm, realtime_breadth)
     render_source_health_badge("taiex_realtime", "即時委買賣")
-    st.markdown("---")
+    st.divider()
     _render_flow_and_fx(usdtwd, institutional, taifex)
-    st.markdown("---")
+    st.divider()
     _render_us_sentiment(fear_greed, mmfi)
-    st.markdown("---")
+    st.divider()
     _render_taiwan_valuation(valuation, margin)
 
 

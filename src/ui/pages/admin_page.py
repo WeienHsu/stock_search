@@ -25,7 +25,7 @@ def render(user_id: str) -> None:
         st.success("已更新")
         st.rerun()
 
-    st.markdown("---")
+    st.divider()
 
     # ── User list ──
     st.markdown("### 用戶列表")
@@ -54,7 +54,7 @@ def render(user_id: str) -> None:
             st.success(f"已移除用戶 {u['username']}")
             st.rerun()
 
-    st.markdown("---")
+    st.divider()
 
     # ── System info ──
     st.markdown("### 系統資訊")
