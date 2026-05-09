@@ -51,7 +51,7 @@ def render(cfg: dict, user_id: str) -> None:
         format_func=lambda x: "📈 買進" if x == "buy" else "📉 賣出",
         key="bt_signal_type",
     )
-    run_btn = st.button("執行回測", use_container_width=False)
+    run_btn = st.button("執行回測", width="content")
 
     if not run_btn:
         st.info("設定參數後點擊「執行回測」")
@@ -92,9 +92,9 @@ def render(cfg: dict, user_id: str) -> None:
     st.divider()
 
     # ── Charts ──
-    st.plotly_chart(build_equity_curve(bt_df), use_container_width=True,
+    st.plotly_chart(build_equity_curve(bt_df), width="stretch",
                     config={"displayModeBar": False})
-    st.plotly_chart(build_return_distribution(bt_df), use_container_width=True,
+    st.plotly_chart(build_return_distribution(bt_df), width="stretch",
                     config={"displayModeBar": False})
 
     # ── Raw data table ──
@@ -102,4 +102,4 @@ def render(cfg: dict, user_id: str) -> None:
         display_df = bt_df[["date", "signal_close", "forward_date", "forward_close",
                              "forward_return_pct", "win"]].copy()
         display_df.columns = ["訊號日", "進場價", "前瞻日", "前瞻收盤", "報酬 (%)", "獲利"]
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width="stretch", hide_index=True)

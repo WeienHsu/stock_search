@@ -7,10 +7,11 @@ import pandas as pd
 import streamlit as st
 
 from src.data.data_source_probe import fetch_text, parse_taifex_futures_html
+from src.data.dynamic_ttl import get_ttl
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_taifex_txf_open_interest(days: int = 10) -> pd.DataFrame:
     cache_key = f"taifex_txf_oi_{days}"
     cached = get_market_cache(cache_key, ttl_override=6 * 3600)

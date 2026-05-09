@@ -23,7 +23,7 @@ def scan_watchlist(
 
     Returns DataFrame with columns:
         ticker, name, buy_signal, sell_signal,
-        buy_status, sell_status, last_buy_date, last_sell_date, current_close
+        buy_status, sell_status, last_buy_date, last_sell_date, current_close, daily_change_pct
     """
     strategy = get_strategy(strategy_id)
     rows = []
@@ -39,6 +39,7 @@ def scan_watchlist(
                 continue
 
             current_close = round(float(df["close"].iloc[-1]), 2)
+            daily_change_pct = _daily_change_pct(df)
             df_ma = add_ma(df, DEFAULT_MA_PERIODS)
             ma_score = ma_alignment_score(df_ma, DEFAULT_MA_PERIODS)
             month_above_quarter = _latest_ma_value(df_ma, 20) > _latest_ma_value(df_ma, 60)
@@ -69,6 +70,7 @@ def scan_watchlist(
                 "last_buy_date": last_buy_date,
                 "last_sell_date": last_sell_date,
                 "current_close": current_close,
+                "daily_change_pct": daily_change_pct,
                 "ma_bullish_score": ma_score,
                 "bullish_alignment": ma_score >= 3,
                 "month_above_quarter": bool(month_above_quarter),
@@ -112,6 +114,7 @@ def _error_row(ticker: str, name: str, err: str) -> dict:
         "signal": False, "buy_signal": False, "sell_signal": False,
         "last_signal_date": "—", "last_buy_date": "—", "last_sell_date": "—",
         "current_close": 0.0,
+        "daily_change_pct": None,
         "ma_bullish_score": 0,
         "bullish_alignment": False,
         "month_above_quarter": False,
@@ -128,3 +131,16 @@ def _latest_ma_value(df: pd.DataFrame, period: int) -> float:
         return float("nan")
     values = pd.to_numeric(df[col], errors="coerce").dropna()
     return float(values.iloc[-1]) if not values.empty else float("nan")
+
+
+def _daily_change_pct(df: pd.DataFrame) -> float | None:
+    if "close" not in df.columns or len(df) < 2:
+        return None
+    closes = pd.to_numeric(df["close"], errors="coerce").dropna()
+    if len(closes) < 2:
+        return None
+    prev_close = float(closes.iloc[-2])
+    current_close = float(closes.iloc[-1])
+    if prev_close == 0:
+        return None
+    return round((current_close - prev_close) / prev_close * 100, 2)

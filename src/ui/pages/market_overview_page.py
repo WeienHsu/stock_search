@@ -42,18 +42,18 @@ def _render_flow_and_fx(usdtwd: pd.DataFrame, institutional: pd.DataFrame, taife
     st.markdown("### 匯率與法人動向")
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(build_line_chart(usdtwd.tail(20), "date", "close", "USD/TWD 近 20 日"), use_container_width=True)
+        st.plotly_chart(build_line_chart(usdtwd.tail(20), "date", "close", "USD/TWD 近 20 日"), width="stretch")
     with col2:
         st.plotly_chart(
             build_bar_chart(institutional, "date", "foreign_net_lots", "外資買賣超（上市+上櫃，張）"),
-            use_container_width=True,
+            width="stretch",
         )
 
     col3, col4 = st.columns(2)
     with col3:
         st.plotly_chart(
             build_bar_chart(institutional, "date", "investment_trust_net_lots", "投信買賣超（上市+上櫃，張）"),
-            use_container_width=True,
+            width="stretch",
         )
     with col4:
         if taifex.empty:
@@ -61,7 +61,7 @@ def _render_flow_and_fx(usdtwd: pd.DataFrame, institutional: pd.DataFrame, taife
         else:
             st.plotly_chart(
                 build_bar_chart(taifex, "date", "foreign_oi_net_contracts", "外資臺指期未平倉淨口數"),
-                use_container_width=True,
+                width="stretch",
             )
 
 
@@ -70,7 +70,7 @@ def _render_us_sentiment(fear_greed: dict, mmfi: dict) -> None:
     col1, col2 = st.columns([1, 1])
     with col1:
         if fear_greed:
-            st.plotly_chart(build_fear_greed_gauge(fear_greed), use_container_width=True)
+            st.plotly_chart(build_fear_greed_gauge(fear_greed), width="stretch")
             st.caption(f"更新時間：{fear_greed.get('timestamp', '—')}")
         else:
             st.warning("CNN Fear & Greed 暫不可用")

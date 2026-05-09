@@ -60,7 +60,7 @@ def _render_revenue_tab(ticker: str) -> None:
         st.info("月營收資料暫不可用")
         st.caption(_source_health_text(["revenue_finmind", "revenue_mops"]))
         return
-    st.dataframe(df[["period", "revenue", "yoy_pct"]], hide_index=True, use_container_width=True)
+    st.dataframe(df[["period", "revenue", "yoy_pct"]], hide_index=True, width="stretch")
     st.line_chart(df, x="period", y="revenue", height=220)
 
 
@@ -78,7 +78,7 @@ def _render_major_holder_tab(ticker: str) -> None:
     name = snapshot.get("stock_name")
     if name:
         st.caption(f"標的：{name}")
-    st.dataframe(df, hide_index=True, use_container_width=True)
+    st.dataframe(df, hide_index=True, width="stretch")
     history = holder_history_to_frame(snapshot)
     if not history.empty and len(history) >= 2:
         st.markdown("**外資持股比率趨勢**")

@@ -14,3 +14,7 @@ def get_news_cache(ticker: str, ttl_override: int | None = None) -> list[dict] |
 
 def save_news_cache(ticker: str, articles: list[dict[str, Any]]) -> None:
     _backend.save("global", ticker, articles)
+
+
+def clear_news_cache(user_id: str = "global") -> int:
+    return _backend.clear_user(user_id)

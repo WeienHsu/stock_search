@@ -2,6 +2,7 @@
 data/
 !src/data/
 reports/
+logs/
 
 # ── Secrets ──
 .env
@@ -37,6 +38,7 @@ env/
 .claude/
 PLAN.md
 AGENTS.md
+CLAUDE.md
 
 # ── NLTK downloaded data (if stored locally) ──
 nltk_data/

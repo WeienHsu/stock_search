@@ -5,7 +5,7 @@ import streamlit as st
 
 import src.strategies.strategy_d    # ensure registration
 import src.strategies.strategy_kd   # ensure registration
-from src.ui.components.sidebar_strategy_params import render_strategy_param_controls
+from src.ui.components.sidebar_strategy_params import build_strategy_params, render_strategy_param_summary
 from src.ui.nav.page_keys import DASHBOARD, LABEL_BY_KEY, WORKSTATION
 
 _SETTINGS_PATH = Path(__file__).parents[2] / "config" / "default_settings.json"
@@ -100,7 +100,7 @@ def render_sidebar(user_id: str) -> dict:
             key="sidebar_quick_search_result",
             label_visibility="collapsed",
         )
-        if st.sidebar.button("開啟 Dashboard", use_container_width=True, key="btn_open_dashboard_search"):
+        if st.sidebar.button("開啟 Dashboard", width="stretch", key="btn_open_dashboard_search"):
             st.session_state["_pending_nav_page"] = LABEL_BY_KEY[DASHBOARD]
             st.session_state["_pending_ticker"] = selected_candidate["ticker"]
             st.rerun()
@@ -116,7 +116,7 @@ def render_sidebar(user_id: str) -> dict:
         placeholder="e.g. 2330.TW / TSLA",
         key="sidebar_ticker",
     ).strip().upper()
-    if st.sidebar.button("開啟綜合看盤", use_container_width=True):
+    if st.sidebar.button("開啟綜合看盤", width="stretch"):
         st.session_state["_pending_nav_page"] = LABEL_BY_KEY[WORKSTATION]
         st.session_state["_pending_ticker"] = ticker
         st.rerun()
@@ -170,6 +170,7 @@ def render_sidebar(user_id: str) -> dict:
     if active_strategies != prefs.get("active_strategies"):
         prefs["active_strategies"] = active_strategies
         save_preferences(user_id, prefs)
+    render_strategy_param_summary(defaults, prefs, active_strategies)
 
     show_macd = bool(prefs.get("show_macd", True))
     show_kd = bool(prefs.get("show_kd", True))
@@ -181,14 +182,7 @@ def render_sidebar(user_id: str) -> dict:
     show_ma_cross_labels = bool(prefs.get("show_ma_cross_labels", False))
     bias_period = int(prefs.get("bias_period", defaults["bias"]["period"]))
 
-    st.sidebar.divider()
-
-    strategy_d_params, strategy_kd_params = render_strategy_param_controls(
-        user_id,
-        defaults,
-        prefs,
-        active_strategies,
-    )
+    strategy_d_params, strategy_kd_params = build_strategy_params(defaults, prefs)
 
     st.sidebar.divider()
     st.sidebar.markdown("**MA 均線**")

@@ -53,7 +53,7 @@ def render_page_header(
                 action.label,
                 key=action.key or f"pageheader_{_slug(action.label)}",
                 type="secondary" if action.type == "ghost" else action.type,
-                use_container_width=True,
+                width="stretch",
                 disabled=action.disabled,
                 help=action.help,
             )

@@ -12,6 +12,7 @@ from src.auth.session_cookie import (
 from src.core.current_user import current_user, current_user_is_admin
 from src.ui.theme import apply_theme
 from src.ui.sidebar import render_sidebar
+from src.ui.nav.keyboard_shortcuts import inject_shortcuts
 from src.ui.nav.page_keys import (
     ADMIN,
     ALERTS,
@@ -118,6 +119,7 @@ navigation_sections = {
     "Settings": [page_by_key[ALERTS], page_by_key[SETTINGS]] + ([page_by_key[ADMIN]] if ADMIN in page_by_key else []),
 }
 selected_page = st.navigation(navigation_sections, position="sidebar", expanded=True)
+inject_shortcuts()
 st.sidebar.divider()
 
 pending_nav = st.session_state.pop("_pending_nav_page", None)

@@ -51,5 +51,20 @@ class PickleBackend(RepositoryBase):
             if path.exists():
                 path.unlink()
 
+    def clear_user(self, user_id: str) -> int:
+        cache_dir = _BASE / self._subdir / user_id
+        if not cache_dir.exists():
+            return 0
+        deleted = 0
+        for path in cache_dir.iterdir():
+            if path.is_file():
+                path.unlink()
+                deleted += 1
+        try:
+            cache_dir.rmdir()
+        except OSError:
+            pass
+        return deleted
+
     def exists(self, user_id: str, key: str) -> bool:
         return self._path(user_id, key).exists()

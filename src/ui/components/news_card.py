@@ -1,4 +1,3 @@
-from datetime import datetime
 from html import escape
 
 import streamlit as st
@@ -6,7 +5,8 @@ import streamlit as st
 from src.ai.prompts.news_synthesizer import generate_news_summary
 from src.ai.provider_chain import build_default_chain
 from src.ai.providers.base import AIProviderError, MissingAIProviderConfig
-from config.morandi_palette import GREEN, RED
+from config.morandi_palette import MORANDI_DOWN, MORANDI_UP
+from src.ui.utils.format_a11y import format_taipei_datetime
 
 
 def render_news_section(
@@ -20,9 +20,9 @@ def render_news_section(
     count = sentiment.get("article_count", 0)
 
     if label == "positive":
-        color, icon = GREEN, "↑"
+        color, icon = MORANDI_UP, "↑"
     elif label == "negative":
-        color, icon = RED, "↓"
+        color, icon = MORANDI_DOWN, "↓"
     else:
         color, icon = "#8A8480", "—"
 
@@ -41,7 +41,7 @@ def render_news_section(
 
     for art in articles[:5]:
         ts = art.get("datetime", 0)
-        date_str = datetime.fromtimestamp(ts).strftime("%m/%d") if ts else ""
+        date_str = format_taipei_datetime(ts) if ts else ""
         headline = escape(str(art.get("headline", "")))
         url = escape(str(art.get("url", "")), quote=True)
         source = escape(str(art.get("source", "")))

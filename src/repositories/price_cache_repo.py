@@ -14,3 +14,7 @@ def get_price_cache(key: str, ttl_override: int | None = None) -> pd.DataFrame |
 
 def save_price_cache(key: str, df: pd.DataFrame) -> None:
     _backend.save("global", key, df)
+
+
+def clear_price_cache(user_id: str = "global") -> int:
+    return _backend.clear_user(user_id)

@@ -3,11 +3,13 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from src.core.market_calendar import TAIWAN_TZ
 from src.data.ticker_utils import normalize_ticker
 from src.data.price_fetcher import fetch_quote
 from src.repositories.watchlist_category_repo import is_primary_watchlist_category, list_categories, list_items
 from src.repositories.watchlist_repo import get_watchlist
 from src.ui.components.sidebar_search import build_search_candidates, format_candidate, fuzzy_ticker_matches
+from src.ui.utils.format_a11y import format_taipei_datetime
 
 
 def render_categorized_watchlist(user_id: str) -> str | None:
@@ -29,9 +31,10 @@ def render_categorized_watchlist(user_id: str) -> str | None:
             st.dataframe(
                 df,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 key=f"categorized_watchlist_{category['id']}",
             )
+            st.caption(f"最後更新：{format_taipei_datetime(pd.Timestamp.now(tz=TAIWAN_TZ).to_pydatetime())}")
 
     if selected_ticker:
         st.session_state["workstation_active_ticker"] = selected_ticker
@@ -153,7 +156,7 @@ def _render_direct_ticker_input() -> str | None:
         placeholder="6491.TW / 6491",
         key="workstation_direct_ticker",
     )
-    if col_apply.button("套用", key="workstation_direct_ticker_apply", use_container_width=True):
+    if col_apply.button("套用", key="workstation_direct_ticker_apply", width="stretch"):
         ticker = normalize_ticker(raw_ticker)
         if ticker:
             return ticker

@@ -6,6 +6,7 @@ import streamlit as st
 from src.data.index_fetcher import index_snapshot
 from src.ui.components.index_mini_chart import build_index_sparkline
 from src.ui.nav.page_keys import LABEL_BY_KEY, MARKET
+from src.ui.utils.format_a11y import format_taipei_datetime
 
 
 def render_market_full_cards(
@@ -32,7 +33,7 @@ def render_market_mini_strip(
     render_index_metric(cols[0], "TAIEX", taiex)
     render_index_metric(cols[1], "GTSM", gtsm)
     render_breadth_metric(cols[2], realtime_breadth or {})
-    if cols[3].button("大盤總覽", use_container_width=True, key="open_market_overview"):
+    if cols[3].button("大盤總覽", width="stretch", key="open_market_overview"):
         st.session_state["_pending_nav_page"] = LABEL_BY_KEY[MARKET]
         st.rerun()
 
@@ -50,7 +51,7 @@ def render_index_full_card(title: str, df: pd.DataFrame) -> None:
     volume_ratio = snap.get("volume_ratio")
     if volume_ratio is not None:
         st.caption(f"成交量 / 5日均量：{volume_ratio:.2f}x")
-    st.plotly_chart(build_index_sparkline(df.tail(60), title), use_container_width=True)
+    st.plotly_chart(build_index_sparkline(df.tail(60), title), width="stretch")
 
 
 def render_index_metric(container, title: str, df: pd.DataFrame) -> None:
@@ -83,4 +84,4 @@ def render_realtime_breadth_card(data: dict) -> None:
     ratio = data.get("ratio")
     if ratio is not None:
         st.progress(min(1.0, max(0.0, float(ratio) / 2)), text=f"委買 / 委賣 ratio：{float(ratio):.2f}")
-    st.caption(f"最後更新：{data.get('ts') or '—'}")
+    st.caption(f"最後更新：{format_taipei_datetime(data.get('ts'))}")

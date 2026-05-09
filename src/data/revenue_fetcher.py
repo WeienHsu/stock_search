@@ -9,13 +9,14 @@ import streamlit as st
 from src.data.chip_data_sources import build_default_chain
 from src.data.chip_utils import is_probable_taiwan_etf, is_taiwan_ticker, ticker_code
 from src.data.data_source_probe import SimpleTableParser, fetch_text
+from src.data.dynamic_ttl import get_ttl
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
 from src.repositories.source_health_repo import record_source_health
 
 _DAY = 24 * 3600
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_monthly_revenue(ticker: str, months: int = 12) -> pd.DataFrame:
     if not is_taiwan_ticker(ticker):
         return pd.DataFrame()

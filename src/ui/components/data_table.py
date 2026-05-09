@@ -25,19 +25,22 @@ def render_data_table(
     key: str,
     height: int | None = 520,
     on_select: bool = False,
+    styled_df=None,
 ):
-    view = df[[column.key for column in schema if column.key in df.columns]].copy()
+    visible_keys = [column.key for column in schema if column.key in df.columns]
+    view = df[visible_keys].copy()
+    data = styled_df if styled_df is not None else view
     kwargs = {
         "column_config": {column.key: _column_config(column) for column in schema if column.key in view.columns},
         "hide_index": True,
-        "use_container_width": True,
+        "width": "stretch",
         "height": height,
         "key": key,
         "on_select": "rerun" if on_select else "ignore",
     }
     if on_select:
         kwargs["selection_mode"] = "single-row"
-    return st.dataframe(view, **kwargs)
+    return st.dataframe(data, **kwargs)
 
 
 def _column_config(column: ColumnSpec):

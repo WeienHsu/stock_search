@@ -9,12 +9,13 @@ import streamlit as st
 from src.data.chip_data_sources import build_default_chain
 from src.data.chip_utils import is_taiwan_ticker, market_kind, ticker_code
 from src.data.data_source_probe import fetch_text, parse_json_list, parse_tpex_table, parse_twse_rwd_table
+from src.data.dynamic_ttl import get_ttl
 from src.repositories.chip_data_cache_repo import get_chip_cache, save_chip_cache
 
 _DAY = 24 * 3600
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_chip_snapshot(ticker: str, institutional_days: int = 5, margin_days: int = 20) -> dict[str, Any]:
     kind = market_kind(ticker)
     if kind == "unsupported":
@@ -54,7 +55,7 @@ def fetch_chip_snapshot(ticker: str, institutional_days: int = 5, margin_days: i
     return result
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_institutional_trades(ticker: str, days: int = 5) -> pd.DataFrame:
     chain = build_default_chain()
     result = chain.fetch_institutional_history(ticker, days)
@@ -63,7 +64,7 @@ def fetch_institutional_trades(ticker: str, days: int = 5) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_margin_trend(ticker: str, days: int = 20) -> pd.DataFrame:
     chain = build_default_chain()
     result = chain.fetch_margin_history(ticker, days)
@@ -72,7 +73,7 @@ def fetch_margin_trend(ticker: str, days: int = 20) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_today(ticker: str) -> dict[str, Any]:
     snapshot = fetch_chip_snapshot(ticker)
     if not snapshot.get("supported"):

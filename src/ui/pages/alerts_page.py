@@ -31,7 +31,7 @@ def _render_price_alerts(user_id: str) -> None:
     ticker = col_ticker.text_input("Ticker", placeholder="TSLA / 2330.TW", key="alert_ticker")
     direction_label = col_direction.selectbox("條件", list(_DIRECTION_LABELS), key="alert_direction")
     threshold = col_threshold.number_input("價格", min_value=0.0, value=0.0, step=1.0, key="alert_threshold")
-    if col_button.button("新增", use_container_width=True):
+    if col_button.button("新增", width="stretch"):
         normalized = normalize_ticker(ticker)
         if not normalized or threshold <= 0:
             st.warning("請輸入 ticker 與大於 0 的價格")

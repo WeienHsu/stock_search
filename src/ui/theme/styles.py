@@ -189,7 +189,38 @@ def inject_css(theme: str) -> None:
         .signal-dot.sell {{ background: {T['signal_sell']}; }}
         .signal-dot.none {{ background: {T['text_tertiary']}; }}
 
-        /* [11] Screen-reader only utility */
+        /* [11] Empty state and skeleton */
+        .empty-state-icon {{
+            width: 36px;
+            height: 36px;
+            margin: 0 auto 10px;
+            color: {T['text_tertiary']};
+            opacity: 0.9;
+        }}
+        .empty-state-icon svg {{
+            width: 100%;
+            height: 100%;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }}
+        .skeleton-block {{
+            display: block;
+            width: 100%;
+            height: var(--skeleton-height, 16px);
+            border-radius: 6px;
+            background: linear-gradient(90deg, {T['bg_surface']} 0%, {T['bg_elevated']} 45%, {T['bg_surface']} 90%);
+            background-size: 220% 100%;
+            animation: skeleton-shimmer 1.2s ease-in-out infinite;
+        }}
+        @keyframes skeleton-shimmer {{
+            0% {{ background-position: 120% 0; }}
+            100% {{ background-position: -120% 0; }}
+        }}
+
+        /* [12] Screen-reader only utility */
         .sr-only {{
             position: absolute;
             width: 1px;
@@ -202,7 +233,7 @@ def inject_css(theme: str) -> None:
             border: 0;
         }}
 
-        /* [12] Reduced motion */
+        /* [13] Reduced motion */
         @media (prefers-reduced-motion: reduce) {{
             *, *::before, *::after {{
                 animation-duration: 0.01ms !important;
@@ -211,6 +242,9 @@ def inject_css(theme: str) -> None:
                 scroll-behavior: auto !important;
             }}
             [data-testid="stSpinner"] svg {{
+                animation: none !important;
+            }}
+            .skeleton-block {{
                 animation: none !important;
             }}
         }}

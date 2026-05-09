@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, time
+
 import pandas as pd
 import streamlit as st
 
@@ -8,14 +10,21 @@ import src.strategies.strategy_d  # ensure registration
 import src.strategies.strategy_kd  # ensure registration
 
 from src.core.sorting import sort_watchlist_items
+from src.core.market_calendar import TAIWAN_TZ
+from src.data.dynamic_ttl import get_ttl
 from src.data.index_fetcher import enrich_index_indicators, fetch_index_ohlcv, get_taiex_realtime_breadth
 from src.repositories.risk_settings_repo import get_risk_settings
 from src.repositories.watchlist_repo import get_watchlist
 from src.scanner.watchlist_scanner import scan_watchlist
 from src.ui.components.empty_state import render_empty_state
+from src.ui.components.kpi_card import render_kpi_card
 from src.ui.components.market_summary import render_market_mini_strip
+from src.ui.components.badge import render_status_pill
+from src.ui.components.signal_dot import signal_dot_html
+from src.ui.components.today_holdings_summary import render_today_holdings_summary
 from src.ui.layout.page_header import Kpi, render_page_header
-from src.ui.nav.page_keys import DASHBOARD, LABEL_BY_KEY, MARKET, SETTINGS
+from src.ui.nav.page_keys import DASHBOARD, LABEL_BY_KEY, SCANNER, SETTINGS, WORKSTATION
+from src.ui.utils.format_a11y import format_taipei_datetime
 
 
 def render(cfg: dict, user_id: str) -> None:
@@ -25,22 +34,20 @@ def render(cfg: dict, user_id: str) -> None:
         kpis=_portfolio_kpis(user_id),
     )
 
+    st.markdown("### 大盤概況")
     _render_market_strip_fragment()
 
     st.divider()
-    left, right = st.columns([1.5, 1], gap="medium")
-    with left:
-        st.markdown("### 自選訊號")
-        _render_watchlist_signals(cfg, user_id)
-    with right:
-        st.markdown("### 快速動作")
-        if st.button("開啟大盤總覽", key="today_open_market", use_container_width=True):
-            st.session_state["_pending_nav_page"] = LABEL_BY_KEY[MARKET]
-            st.rerun()
-        if st.button("管理自選清單", key="today_open_settings", use_container_width=True):
-            st.session_state["_pending_nav_page"] = LABEL_BY_KEY[SETTINGS]
-            st.rerun()
-        st.caption("自選訊號使用目前側邊欄策略參數與既有 Scanner 計算邏輯。")
+    st.markdown("### 訊號摘要")
+    _render_watchlist_signals(cfg, user_id)
+
+    st.divider()
+    st.markdown("### 持股摘要")
+    render_today_holdings_summary(user_id)
+
+    st.divider()
+    st.markdown("### 快速動作")
+    _render_quick_actions()
 
 
 def _portfolio_kpis(user_id: str) -> list[Kpi]:
@@ -58,9 +65,13 @@ def _render_market_strip_fragment() -> None:
     with st.spinner("載入大盤概況..."):
         taiex, gtsm, breadth = _market_strip_data()
     render_market_mini_strip(taiex, gtsm, breadth)
+    now = datetime.now(TAIWAN_TZ)
+    session_label = _tw_market_session_label(now)
+    render_status_pill(session_label, _session_pill_kind(session_label))
+    st.caption(format_taipei_datetime(now))
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=get_ttl(30), show_spinner=False)
 def _market_strip_data() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     taiex = _safe_df(lambda: enrich_index_indicators(fetch_index_ohlcv("taiex", "1mo")))
     gtsm = _safe_df(lambda: enrich_index_indicators(fetch_index_ohlcv("gtsm", "1mo")))
@@ -68,7 +79,7 @@ def _market_strip_data() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     return taiex, gtsm, breadth
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=get_ttl(300), show_spinner=False)
 def _scan_today_watchlist(items: list[dict], strategy_id: str, strategy_params: dict) -> pd.DataFrame:
     return scan_watchlist(items, strategy_id=strategy_id, strategy_params=strategy_params)
 
@@ -77,7 +88,7 @@ def _render_watchlist_signals(cfg: dict, user_id: str) -> None:
     items = sort_watchlist_items(get_watchlist(user_id))
     if not items:
         if render_empty_state(
-            "□",
+            "search",
             "自選清單為空",
             "請先新增股票後再查看每日訊號。",
             action_label="前往設定",
@@ -97,11 +108,12 @@ def _render_watchlist_signals(cfg: dict, user_id: str) -> None:
         st.info("目前沒有可顯示的自選訊號")
         return
 
+    _render_signal_counts(result_df)
     table = _today_table(result_df)
     event = st.dataframe(
         table,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         key="today_watchlist_signals_table",
         on_select="rerun",
         selection_mode="single-row",
@@ -123,6 +135,36 @@ def _render_watchlist_signals(cfg: dict, user_id: str) -> None:
         st.rerun()
 
     st.caption("點選任一列可開啟 Dashboard 查看細節。")
+
+
+def _render_signal_counts(result_df: pd.DataFrame) -> None:
+    counts = _signal_counts(result_df)
+    col_buy, col_sell, col_neutral = st.columns(3)
+    with col_buy:
+        render_kpi_card("買進", str(counts["buy"]), suffix_html=signal_dot_html("buy"))
+    with col_sell:
+        render_kpi_card("賣出", str(counts["sell"]), suffix_html=signal_dot_html("sell"))
+    with col_neutral:
+        render_kpi_card("中性", str(counts["neutral"]), suffix_html=signal_dot_html("none"))
+
+
+def _signal_counts(result_df: pd.DataFrame) -> dict[str, int]:
+    buy_series = result_df.get("buy_signal", pd.Series(False, index=result_df.index)).fillna(False).astype(bool)
+    sell_series = result_df.get("sell_signal", pd.Series(False, index=result_df.index)).fillna(False).astype(bool)
+    buy = int(buy_series.sum())
+    sell = int(sell_series.sum())
+    neutral = int((~buy_series & ~sell_series).sum())
+    return {"buy": buy, "sell": sell, "neutral": neutral}
+
+
+def _render_quick_actions() -> None:
+    col_workstation, col_scanner = st.columns(2)
+    if col_workstation.button("開啟綜合看盤", key="today_open_workstation", width="stretch"):
+        st.session_state["_pending_nav_page"] = LABEL_BY_KEY[WORKSTATION]
+        st.rerun()
+    if col_scanner.button("開啟掃描器", key="today_open_scanner", width="stretch"):
+        st.session_state["_pending_nav_page"] = LABEL_BY_KEY[SCANNER]
+        st.rerun()
 
 
 def _today_table(result_df: pd.DataFrame) -> pd.DataFrame:
@@ -153,3 +195,22 @@ def _safe_dict(loader) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _tw_market_session_label(now: datetime) -> str:
+    if now.weekday() >= 5:
+        return "休市"
+    current_time = now.time()
+    if time(9, 0) <= current_time <= time(13, 30):
+        return "盤中"
+    if current_time > time(13, 30):
+        return "盤後"
+    return "盤前"
+
+
+def _session_pill_kind(label: str) -> str:
+    if label == "盤中":
+        return "buy"
+    if label == "休市":
+        return "neutral"
+    return "info"

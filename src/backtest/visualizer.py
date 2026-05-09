@@ -1,7 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from config.morandi_palette import BACKGROUND, BORDER, TEXT_PRIMARY, GREEN, RED, BLUE
+from config.morandi_palette import BACKGROUND, BORDER, TEXT_PRIMARY, MORANDI_DOWN, MORANDI_UP, BLUE
 
 
 def build_equity_curve(bt_df: pd.DataFrame) -> go.Figure:
@@ -18,7 +18,7 @@ def build_equity_curve(bt_df: pd.DataFrame) -> go.Figure:
         f"訊號 #{i+1} ({row['date']})<br>前瞻收盤：{row['forward_date']}<br>累積報酬：{v:+.2f}%"
         for i, (v, (_, row)) in enumerate(zip(equity_pct, bt_df.iterrows()))
     ]
-    colors = [GREEN if v >= 0 else RED for v in equity_pct]
+    colors = [MORANDI_UP if v >= 0 else MORANDI_DOWN for v in equity_pct]
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -55,7 +55,7 @@ def build_return_distribution(bt_df: pd.DataFrame) -> go.Figure:
         return go.Figure()
 
     bt_df = bt_df.sort_values("date").reset_index(drop=True)
-    colors = [GREEN if r >= 0 else RED for r in bt_df["forward_return_pct"]]
+    colors = [MORANDI_UP if r >= 0 else MORANDI_DOWN for r in bt_df["forward_return_pct"]]
 
     x_labels = [f"#{i+1}" for i in range(len(bt_df))]
     hover_text = [

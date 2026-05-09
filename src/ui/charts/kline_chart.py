@@ -92,7 +92,7 @@ def _main_traces(
     traces.append(go.Candlestick(
         x=df["date"],
         open=df["open"], high=df["high"], low=df["low"], close=df["close"],
-        increasing_line_color=P.RED, decreasing_line_color=P.GREEN,
+        increasing_line_color=P.MORANDI_UP, decreasing_line_color=P.MORANDI_DOWN,
         name="K線", showlegend=False,
     ))
     for n in sorted(ma_periods):
@@ -126,7 +126,7 @@ def _signal_traces_below(
 
 def _macd_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
     P = _get_palette()
-    colors = [P.RED if v >= 0 else P.GREEN for v in df["histogram"].fillna(0)]
+    colors = [P.MORANDI_UP if v >= 0 else P.MORANDI_DOWN for v in df["histogram"].fillna(0)]
     return [
         go.Bar(x=df["date"], y=df["histogram"], marker_color=colors, name="Histogram", showlegend=False),
         go.Scatter(x=df["date"], y=df["macd_line"], mode="lines", line=dict(color=P.BLUE, width=1.5), name="MACD"),
@@ -148,7 +148,7 @@ def _volume_bar_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
         return []
     open_col = pd.to_numeric(df.get("open", df["close"]), errors="coerce")
     close_col = pd.to_numeric(df["close"], errors="coerce")
-    colors = [P.RED if float(c) >= float(o) else P.GREEN for c, o in zip(close_col.fillna(0), open_col.fillna(0))]
+    colors = [P.MORANDI_UP if float(c) >= float(o) else P.MORANDI_DOWN for c, o in zip(close_col.fillna(0), open_col.fillna(0))]
     return [go.Bar(
         x=df["date"],
         y=pd.to_numeric(df["volume"], errors="coerce"),
@@ -163,7 +163,7 @@ def _bias_traces(df: pd.DataFrame, period: int) -> list[go.BaseTraceType]:
     col = f"bias_{period}"
     if col not in df.columns:
         return []
-    colors = [P.RED if v >= 0 else P.GREEN for v in df[col].fillna(0)]
+    colors = [P.MORANDI_UP if v >= 0 else P.MORANDI_DOWN for v in df[col].fillna(0)]
     return [
         go.Bar(x=df["date"], y=df[col], marker_color=colors, name=f"Bias {period}"),
     ]
@@ -176,8 +176,8 @@ def _candlestick_pattern_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
         return []
 
     color_map = {
-        "bullish": P.RED,
-        "bearish": P.GREEN,
+        "bullish": P.MORANDI_UP,
+        "bearish": P.MORANDI_DOWN,
         "neutral": P.TEXT_SECONDARY,
     }
     traces = []
@@ -317,8 +317,8 @@ def build_combined_chart(
         elif panel == "kd":
             for trace in _kd_traces(df):
                 fig.add_trace(trace, row=row_idx, col=1)
-            fig.add_hline(y=80, line_color=P.GREEN, line_dash="dash", line_width=1, row=row_idx, col=1)
-            fig.add_hline(y=20, line_color=P.RED, line_dash="dash", line_width=1, row=row_idx, col=1)
+            fig.add_hline(y=80, line_color=P.MORANDI_DOWN, line_dash="dash", line_width=1, row=row_idx, col=1)
+            fig.add_hline(y=20, line_color=P.MORANDI_UP, line_dash="dash", line_width=1, row=row_idx, col=1)
             fig.update_yaxes(range=[0, 100], row=row_idx, col=1)
         elif panel == "bias":
             for trace in _bias_traces(df, bias_period):
@@ -448,7 +448,7 @@ def _volume_profile_overlay(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
     for idx, zone in enumerate(top_zones):
         price = float(zone["price"])
         is_poc = price == profile.get("poc_price")
-        color = P.GREEN if price > current_close else P.RED
+        color = P.MORANDI_DOWN if price > current_close else P.MORANDI_UP
         width = 1.2 + (float(zone["volume"]) / max_volume) * 3.0
         shapes.append(dict(
             type="line",
@@ -626,8 +626,8 @@ def build_kd_chart(df: pd.DataFrame) -> go.Figure:
     for trace in _kd_traces(df):
         fig.add_trace(trace)
     _apply_layout(fig, title="KD")
-    fig.add_hline(y=80, line_color=P.GREEN, line_dash="dash", line_width=1, annotation_text="80")
-    fig.add_hline(y=20, line_color=P.RED,   line_dash="dash", line_width=1, annotation_text="20")
+    fig.add_hline(y=80, line_color=P.MORANDI_DOWN, line_dash="dash", line_width=1, annotation_text="80")
+    fig.add_hline(y=20, line_color=P.MORANDI_UP,   line_dash="dash", line_width=1, annotation_text="20")
     fig.update_yaxes(range=[0, 100])
     return fig
 

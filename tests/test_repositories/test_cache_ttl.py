@@ -19,6 +19,12 @@ class FakeBackend:
     def save(self, user_id, key, value):
         self.saved[(user_id, key)] = value
 
+    def clear_user(self, user_id):
+        keys = [key for key in self.saved if key[0] == user_id]
+        for key in keys:
+            del self.saved[key]
+        return len(keys)
+
 
 def test_price_cache_uses_ttl_override(monkeypatch):
     backend = FakeBackend()
@@ -52,3 +58,12 @@ def test_news_cache_uses_ttl_override(monkeypatch):
 
     assert result == articles
     assert backend.ttl_seconds == 300
+
+
+def test_price_cache_clear_delegates_to_backend(monkeypatch):
+    backend = FakeBackend()
+    backend.saved[("global", "TSLA_1y")] = pd.DataFrame({"close": [100]})
+    monkeypatch.setattr(price_cache_repo, "_backend", backend)
+
+    assert price_cache_repo.clear_price_cache("global") == 1
+    assert backend.saved == {}

@@ -24,6 +24,7 @@ from src.strategies.strategy_d import prepare_df, diagnose_strategy_d, diagnose_
 from src.ui.charts.kline_chart import build_combined_chart, render_combined_chart, SignalLayer
 from src.ui.components.integrated_signal_panel import render_integrated_signal
 from src.ui.components.chip_panel import render_chip_panel
+from src.ui.components.empty_state import render_empty_state
 from src.ui.components.news_card import render_news_section
 from src.ui.components.sentiment_panel import render_sentiment_panel
 from src.ui.layout.page_header import Action, Kpi, render_page_header
@@ -80,7 +81,7 @@ def render(cfg: dict, user_id: str) -> None:
         df_full = fetch_prices_for_strategy(ticker, years=10)
 
     if df_full.empty:
-        st.error(f"無法取得 **{ticker}** 的價格資料，請確認代號是否正確。")
+        render_empty_state("chart", "無法取得價格資料", f"請確認 {ticker} 代號是否正確，或稍後再試。")
         return
 
     # ── Compute indicators on full 10Y to avoid short-period row shortage ──
@@ -296,30 +297,6 @@ def _render_kline_fragment(
     cfg: dict,
     signal_layers: list[SignalLayer],
 ) -> None:
-    indicator_options = {
-        "MACD": "show_macd",
-        "KD": "show_kd",
-        "Bias": "show_bias",
-        "成交量": "show_volume_bar",
-        "Volume Profile": "show_volume_profile",
-        "K線形態": "show_candlestick_patterns",
-        "MA交叉": "show_ma_cross_labels",
-    }
-    default_indicators = [
-        label for label, cfg_key in indicator_options.items()
-        if bool(cfg.get(cfg_key, False))
-    ]
-    selected_indicators = st.pills(
-        "圖表指標",
-        options=list(indicator_options.keys()),
-        selection_mode="multi",
-        default=default_indicators,
-        key=f"stock_chart_indicators_{ticker}",
-        help="控制主圖與副圖顯示；策略參數仍在側邊欄調整。",
-        width="stretch",
-    ) or []
-    selected = set(selected_indicators)
-
     period = cfg["period"]
     cutoff_days = _PERIOD_DAYS.get(period, 183)
     cutoff_date = (datetime.now() - timedelta(days=cutoff_days)).strftime("%Y-%m-%d")
@@ -330,6 +307,7 @@ def _render_kline_fragment(
 
     chart_df = _chart_dataframe(ticker, period, granularity, df_full, analysis_ma_periods, sd_params, cfg)
     chart_signal_layers = signal_layers if granularity == "1d" else []
+    indicator_flags = _chart_indicator_flags(cfg, chart_df)
 
     fig = build_combined_chart(
         chart_df,
@@ -338,18 +316,18 @@ def _render_kline_fragment(
         signal_dates=[],
         sell_dates=[],
         bias_period=cfg["bias_period"],
-        show_macd=("MACD" in selected) and "histogram" in chart_df.columns,
-        show_kd=("KD" in selected) and "K" in chart_df.columns,
-        show_bias="Bias" in selected,
+        show_macd=indicator_flags["show_macd"],
+        show_kd=indicator_flags["show_kd"],
+        show_bias=indicator_flags["show_bias"],
         x_range_start=x_range_start,
         period=period,
         uirevision=f"{ticker}_{period}_{nonce}",
         signal_layers=chart_signal_layers,
         show_signals=True,
-        show_candlestick_patterns="K線形態" in selected,
-        show_volume_profile="Volume Profile" in selected,
-        show_volume_bar="成交量" in selected,
-        ma_cross_events=_recent_ma_cross_events(chart_df) if "MA交叉" in selected else [],
+        show_candlestick_patterns=indicator_flags["show_candlestick_patterns"],
+        show_volume_profile=indicator_flags["show_volume_profile"],
+        show_volume_bar=indicator_flags["show_volume_bar"],
+        ma_cross_events=_recent_ma_cross_events(chart_df) if indicator_flags["show_ma_cross_labels"] else [],
         granularity=granularity,
     )
     render_combined_chart(
@@ -363,6 +341,18 @@ def _render_kline_fragment(
         },
     )
     st.caption("提示：框選可縮放 X 軸，平移或縮放後價格 Y 軸會依可視範圍自動調整。底部滑桿可查看更早歷史。點擊 ↩ 重置 或圖表右上角「Reset axes」可回到選定期間。")
+
+
+def _chart_indicator_flags(cfg: dict, chart_df: pd.DataFrame) -> dict[str, bool]:
+    return {
+        "show_macd": bool(cfg.get("show_macd", False)) and "histogram" in chart_df.columns,
+        "show_kd": bool(cfg.get("show_kd", False)) and "K" in chart_df.columns,
+        "show_bias": bool(cfg.get("show_bias", False)),
+        "show_volume_bar": bool(cfg.get("show_volume_bar", False)),
+        "show_volume_profile": bool(cfg.get("show_volume_profile", False)),
+        "show_candlestick_patterns": bool(cfg.get("show_candlestick_patterns", False)),
+        "show_ma_cross_labels": bool(cfg.get("show_ma_cross_labels", False)),
+    }
 
 
 def _render_ai_signal_explainer(
@@ -450,12 +440,12 @@ def _render_ma_analysis_content(df_full: pd.DataFrame) -> None:
             x=alt.X("未來日", sort=None, title=None),
             y=alt.Y("MA20扣抵", scale=alt.Scale(zero=False), title=None),
         ).properties(height=140)
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
 
     recent_crosses = summary.get("recent_crosses", [])
     if recent_crosses:
         st.caption("近期 MA 交叉")
-        st.dataframe(pd.DataFrame(recent_crosses).tail(5), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(recent_crosses).tail(5), hide_index=True, width="stretch")
 
     if necklines:
         st.caption("近 60 日支撐/壓力參考：" + " / ".join(f"{level:.2f}" for level in necklines))
@@ -532,7 +522,7 @@ def _render_strategy_d_diagnosis(
                 pass_icon = "✅" if m_passed is True else ("❌" if m_passed is False else "—")
                 rows.append({"項目": m["name"], "目前值": actual_str, "目標": target_str, "通過": pass_icon})
             if rows:
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
             st.caption(c.get("summary", ""))
 
 

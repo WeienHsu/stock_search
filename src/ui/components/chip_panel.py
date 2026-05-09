@@ -39,9 +39,9 @@ def render_chip_panel(ticker: str, *, use_expander: bool = True) -> None:
         if len(history) >= 2:
             col_flow, col_margin = st.columns([1.4, 1])
             with col_flow:
-                st.plotly_chart(_historical_institutional_chart(history), use_container_width=True)
+                st.plotly_chart(_historical_institutional_chart(history), width="stretch")
             with col_margin:
-                st.plotly_chart(_historical_margin_chart(history), use_container_width=True)
+                st.plotly_chart(_historical_margin_chart(history), width="stretch")
         else:
             _render_current_snapshot(institutional, margin, data)
 
@@ -159,13 +159,13 @@ def _render_current_snapshot(institutional: pd.DataFrame, margin: pd.DataFrame, 
     if not institutional.empty and not margin.empty:
         col_flow, col_margin = st.columns([1.4, 1])
         with col_flow:
-            st.plotly_chart(_institutional_flow_chart(institutional), use_container_width=True)
+            st.plotly_chart(_institutional_flow_chart(institutional), width="stretch")
         with col_margin:
-            st.plotly_chart(_margin_trend_chart(margin), use_container_width=True)
+            st.plotly_chart(_margin_trend_chart(margin), width="stretch")
     elif not institutional.empty:
-        st.plotly_chart(_institutional_flow_chart(institutional), use_container_width=True)
+        st.plotly_chart(_institutional_flow_chart(institutional), width="stretch")
     elif not margin.empty:
-        st.plotly_chart(_margin_trend_chart(margin), use_container_width=True)
+        st.plotly_chart(_margin_trend_chart(margin), width="stretch")
 
 
 def _institutional_flow_chart(df: pd.DataFrame) -> go.Figure:

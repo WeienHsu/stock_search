@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 import streamlit as st
 
+from src.data.dynamic_ttl import get_ttl
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
 from src.sentiment.scorers.vader import label_for_score
 from src.sentiment.sources.news_finnhub import source_from_articles
@@ -27,7 +28,7 @@ def aggregate_sentiment(
     return _aggregate_sentiment_uncached(ticker, articles, ttl_seconds=ttl_seconds, fetchers=fetchers)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=get_ttl(300), show_spinner=False)
 def _aggregate_sentiment_cached(
     ticker: str,
     articles: list[dict[str, Any]],

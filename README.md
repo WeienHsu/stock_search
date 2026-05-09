@@ -156,6 +156,15 @@ docker compose exec worker python -c "from src.scheduler.jobs.price_alerts impor
 pytest -q
 ```
 
+本機提交前建議安裝 pre-commit hooks：
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+目前 hooks 會檢查 YAML、檔尾換行、尾端空白，並執行 `python scripts/check_contrast.py` 驗證 UI token 對比度。
+
 目前主要測試涵蓋：
 
 - 指標與策略

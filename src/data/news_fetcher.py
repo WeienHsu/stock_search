@@ -5,10 +5,11 @@ import streamlit as st
 
 from src.core.finnhub_mode import resolve_api_key
 from src.core.market_calendar import cache_ttl_seconds
+from src.data.dynamic_ttl import get_ttl
 from src.repositories.news_cache_repo import get_news_cache, save_news_cache
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=get_ttl(600), show_spinner=False)
 def fetch_news(ticker: str, user_id: str) -> list[dict]:
     cached = get_news_cache(ticker, ttl_override=cache_ttl_seconds(ticker, "news"))
     if cached is not None:
