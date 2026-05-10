@@ -1,3 +1,9 @@
+"""Option B — Top-N with Delta: show only the 7 highest-volume bins.
+
+Keeps the original "sparse and clean" philosophy but replaces fixed-width
+lines with proportional bars and adds delta coloring.  Each bin gets an
+explicit price label so the user can read exact levels at a glance.
+"""
 from __future__ import annotations
 
 import pandas as pd
@@ -8,8 +14,10 @@ _COLOR_BUY = "#6A9E8A"   # Morandi green — net buying pressure
 _COLOR_SELL = "#C87D6A"  # Morandi red   — net selling pressure
 _COLOR_FLAT = "#8A8480"  # Morandi grey  — neutral / doji
 
-_X_LEFT = 0.78   # paper-coord left edge of overlay (right 22% of chart)
-_X_RIGHT = 0.995  # paper-coord right edge
+_X_LEFT = 0.78
+_X_RIGHT = 0.995
+
+_TOP_N = 7   # only the 7 highest-volume bins are shown
 
 
 def build_delta_profile_overlay(
@@ -17,14 +25,15 @@ def build_delta_profile_overlay(
     n_days: int = 60,
     n_bins: int = 20,
 ) -> tuple[list[dict], list[dict]]:
-    """Plotly shapes + annotations for a delta-colored Volume Profile overlay.
+    """Sparse VP overlay: top-7 bins by volume, delta-colored, all labeled.
 
-    Each price bin is rendered as a horizontal bar on the right side of the
-    chart (paper x: 0.78–1.0).  Bar length is proportional to bin volume;
-    colour reflects Estimated Bar Delta sign (green = buying, red = selling).
-    POC (peak volume) gets a text label.
+    Each bin is a horizontal bar whose:
+    - Length  ∝ volume (standard VP look)
+    - Color   = delta sign (green buy / red sell / grey flat)
+    - Label   = price shown on every bar (not just POC)
 
-    Returns (shapes, annotations) ready for fig.update_layout().
+    Only shows the _TOP_N most significant price levels, keeping
+    the chart uncluttered while still communicating delta direction.
     """
     profile = compute_delta_profile(df, n_days=n_days, n_bins=n_bins)
     bins: list[float] = profile.get("bins", [])
@@ -35,13 +44,20 @@ def build_delta_profile_overlay(
     if not bins:
         return [], []
 
-    max_vol = max((v for v in volumes if v > 0), default=1.0)
+    # Select top-N bins by volume
+    indexed = sorted(
+        enumerate(zip(bins, volumes, deltas)),
+        key=lambda x: x[1][1],
+        reverse=True,
+    )[:_TOP_N]
+
+    max_vol = max(v for _, (_, v, _) in indexed) or 1.0
     bar_span = _X_RIGHT - _X_LEFT
 
     shapes: list[dict] = []
     annotations: list[dict] = []
 
-    for price, vol, delta in zip(bins, volumes, deltas):
+    for _, (price, vol, delta) in indexed:
         if vol <= 0:
             continue
 
@@ -66,22 +82,22 @@ def build_delta_profile_overlay(
             "y1": price,
             "line": {
                 "color": color,
-                "width": 2.5 if is_poc else 1.8,
+                "width": 3.0 if is_poc else 1.8,
                 "dash": "solid",
             },
-            "opacity": 0.88 if is_poc else 0.55,
+            "opacity": 0.90 if is_poc else 0.65,
         })
 
-        if is_poc:
-            annotations.append({
-                "x": _X_RIGHT,
-                "y": price,
-                "xref": "paper",
-                "yref": "y",
-                "xanchor": "left",
-                "showarrow": False,
-                "text": f"POC {price:.2f}",
-                "font": {"color": color, "size": 10},
-            })
+        label = ("POC " if is_poc else "") + f"{price:.2f}"
+        annotations.append({
+            "x": _X_RIGHT,
+            "y": price,
+            "xref": "paper",
+            "yref": "y",
+            "xanchor": "left",
+            "showarrow": False,
+            "text": label,
+            "font": {"color": color, "size": 10},
+        })
 
     return shapes, annotations
