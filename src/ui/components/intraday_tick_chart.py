@@ -8,29 +8,29 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.data.price_fetcher import fetch_prices_by_interval
+from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
 def build_intraday_tick_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
+    palette = get_chart_palette()
     fig = go.Figure()
     if not df.empty and {"date", "close"}.issubset(df.columns):
         fig.add_trace(go.Scatter(
             x=df["date"],
             y=df["close"],
             mode="lines",
-            line=dict(color="#7A9EB5", width=2),
+            line=dict(color=palette.BLUE, width=2),
             name="1m",
         ))
+    apply_chart_theme(fig, title=f"{ticker} 即時分時")
     fig.update_layout(
-        title=dict(text=f"{ticker} 即時分時", font=dict(size=14)),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=40, b=10),
         height=240,
         hovermode="x unified",
         dragmode="zoom",
     )
-    fig.update_xaxes(showgrid=True, gridcolor="#D4CEC8", fixedrange=False)
-    fig.update_yaxes(showgrid=True, gridcolor="#D4CEC8", autorange=True, fixedrange=False)
+    fig.update_xaxes(showgrid=True, gridcolor=palette.BORDER, fixedrange=False)
+    fig.update_yaxes(showgrid=True, gridcolor=palette.BORDER, autorange=True, fixedrange=False)
     return fig
 
 

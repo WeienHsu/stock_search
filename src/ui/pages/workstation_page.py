@@ -20,6 +20,7 @@ from src.ui.components.intraday_tick_chart import render_intraday_tick_chart
 from src.ui.components.market_summary import render_market_mini_strip
 from src.ui.components.source_health_badge import render_source_health_badge
 from src.ui.components.stock_detail_tabs import render_stock_detail_tabs
+from src.ui.utils.ticker_display import resolved_display_ticker, should_sync_display_ticker
 
 
 def render(cfg: dict, user_id: str) -> None:
@@ -40,8 +41,9 @@ def render(cfg: dict, user_id: str) -> None:
 
         ticker = str(st.session_state.get("workstation_active_ticker") or default_ticker).upper()
         with st.container():
-            st.markdown(f"### {ticker} K 線")
-            _render_workstation_kline(ticker, cfg)
+            resolved_ticker = _render_workstation_kline(ticker, cfg)
+            if resolved_ticker != ticker:
+                st.session_state["workstation_active_ticker"] = resolved_ticker
 
     with right:
         with st.container():
@@ -57,7 +59,8 @@ def render(cfg: dict, user_id: str) -> None:
             render_stock_detail_tabs(ticker, user_id)
 
 
-def _render_workstation_kline(ticker: str, cfg: dict) -> None:
+def _render_workstation_kline(ticker: str, cfg: dict) -> str:
+    title_slot = st.empty()
     granularity_options = {
         "1m": "1分",
         "5m": "5分",
@@ -79,11 +82,23 @@ def _render_workstation_kline(ticker: str, cfg: dict) -> None:
     try:
         df = fetch_prices_by_interval(ticker, granularity, period="6M")
     except Exception as exc:
+        title_slot.markdown(f"### {ticker} K 線")
         st.info(f"K 線資料暫不可用：{exc}")
-        return
+        return ticker
     if df.empty:
+        title_slot.markdown(f"### {ticker} K 線")
         st.info("K 線資料暫不可用")
-        return
+        return ticker
+
+    display_ticker = resolved_display_ticker(ticker)
+    if should_sync_display_ticker(ticker, display_ticker):
+        st.session_state["_resolved_sidebar_ticker"] = display_ticker
+        st.session_state["_pending_ticker"] = display_ticker
+        st.session_state["workstation_active_ticker"] = display_ticker
+        st.rerun()
+
+    title_slot.markdown(f"### {display_ticker} K 線")
+    ticker = display_ticker
 
     bias_period = int(cfg.get("bias_period", 20))
     selected_ma_periods = _selected_ma_periods(cfg)
@@ -113,6 +128,7 @@ def _render_workstation_kline(ticker: str, cfg: dict) -> None:
         key=f"workstation_chart_{ticker}_{granularity}",
         config={"displayModeBar": True, "displaylogo": False},
     )
+    return ticker
 
 
 @st.fragment(run_every=60)

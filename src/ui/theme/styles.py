@@ -12,6 +12,15 @@ def inject_css(theme: str) -> None:
             --bg-base: {T['bg_base']};
             --bg-surface: {T['bg_surface']};
             --bg-elevated: {T['bg_elevated']};
+            --sidebar-bg: {T['sidebar_bg']};
+            --sidebar-nav-active-bg: {T['sidebar_nav_active_bg']};
+            --control-bg: {T['control_bg']};
+            --control-bg-hover: {T['control_bg_hover']};
+            --control-bg-active: {T['control_bg_active']};
+            --button-secondary-bg: {T['button_secondary_bg']};
+            --button-secondary-hover-bg: {T['button_secondary_hover_bg']};
+            --button-disabled-bg: {T['button_disabled_bg']};
+            --button-disabled-text: {T['button_disabled_text']};
             --border-subtle: {T['border_subtle']};
             --border-default: {T['border_default']};
             --border-strong: {T['border_strong']};
@@ -19,12 +28,19 @@ def inject_css(theme: str) -> None:
             --text-primary: {T['text_primary']};
             --text-secondary: {T['text_secondary']};
             --text-tertiary: {T['text_tertiary']};
+            --sidebar-text-secondary: {T['sidebar_text_secondary']};
             --semantic-up: {T['semantic_up_text']};
             --semantic-down: {T['semantic_down_text']};
             --signal-buy: {T['signal_buy']};
             --signal-sell: {T['signal_sell']};
             --font-ui: {T['font_ui']};
             --font-mono: {T['font_mono']};
+            --space-sm: {T['space_sm']};
+            --space-md: {T['space_md']};
+            --space-lg: {T['space_lg']};
+            --radius-sm: {T['radius_sm']};
+            --radius-md: {T['radius_md']};
+            --motion-fast: {T['motion_fast']};
         }}
 
         /* [1] Global font stack and base colors */
@@ -34,11 +50,94 @@ def inject_css(theme: str) -> None:
             font-family: {T['font_ui']};
         }}
         [data-testid="stSidebar"] {{
-            background-color: {T['bg_surface']};
+            background-color: var(--sidebar-bg);
             border-right: 1px solid {T['border_default']};
+            color: {T['text_primary']};
+        }}
+        [data-testid="stSidebar"] .stMarkdown,
+        [data-testid="stSidebar"] [data-testid="stElementContainer"],
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {{
+            background-color: transparent !important;
+        }}
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] small,
+        [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"],
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {{
+            color: {T['text_primary']} !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] span,
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {{
+            color: var(--sidebar-text-secondary) !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stSidebarNav"] a,
+        [data-testid="stSidebar"] [data-testid="stSidebarNav"] span,
+        [data-testid="stSidebar"] [data-testid="stSidebarNav"] p,
+        [data-testid="stSidebar"] [data-testid="stSidebarNavLink"],
+        [data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] {{
+            color: var(--sidebar-text-secondary) !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"],
+        [data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] span,
+        [data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] p,
+        [data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"][aria-current="page"] {{
+            background-color: var(--sidebar-nav-active-bg) !important;
+            color: {T['text_primary']} !important;
+        }}
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] textarea {{
+            background-color: var(--control-bg) !important;
+            color: {T['text_primary']} !important;
+            -webkit-text-fill-color: {T['text_primary']} !important;
+            border-color: {T['border_default']} !important;
+        }}
+        [data-testid="stSidebar"] input::placeholder,
+        [data-testid="stSidebar"] textarea::placeholder {{
+            color: {T['text_tertiary']} !important;
+            -webkit-text-fill-color: {T['text_tertiary']} !important;
+            opacity: 1 !important;
+        }}
+        [data-testid="stSidebar"] [data-baseweb="input"],
+        [data-testid="stSidebar"] [data-baseweb="select"],
+        [data-testid="stSidebar"] [data-baseweb="popover"] {{
+            background-color: var(--control-bg) !important;
+            color: {T['text_primary']} !important;
+            border-color: {T['border_default']} !important;
+        }}
+        [data-testid="stSidebar"] [data-baseweb="tag"],
+        [data-testid="stSidebar"] [data-baseweb="select"] > div,
+        [data-testid="stSidebar"] [data-baseweb="select"] span {{
+            background-color: transparent !important;
+            color: {T['text_primary']} !important;
+        }}
+        [data-testid="stSidebar"] [data-baseweb="radio"] div,
+        [data-testid="stSidebar"] [data-baseweb="checkbox"] div,
+        [data-testid="stSidebar"] [data-testid="stCheckbox"] div,
+        [data-testid="stSidebar"] [data-testid="stRadio"] div,
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] div,
+        [data-testid="stSidebar"] [data-testid="stMultiSelect"] div {{
+            color: {T['text_primary']} !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] button,
+        [data-testid="stSidebar"] [data-testid="baseButton-secondary"],
+        [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {{
+            background-color: var(--control-bg) !important;
+            color: {T['text_primary']} !important;
+            border-color: {T['border_default']} !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stSegmentedControl"] button:hover,
+        [data-testid="stSidebar"] [data-testid="baseButton-secondary"]:hover,
+        [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {{
+            background-color: var(--control-bg-hover) !important;
+            color: {T['text_primary']} !important;
+            border-color: {T['border_strong']} !important;
         }}
         [data-testid="stVerticalBlock"] > div:first-child {{
-            gap: 0.75rem;
+            gap: var(--space-md);
         }}
         h3 {{
             color: {T['text_primary']};
@@ -57,18 +156,18 @@ def inject_css(theme: str) -> None:
         /* [3] Metric typography */
         [data-testid="stMetricLabel"] {{
             color: {T['text_tertiary']};
-            font-size: 12px;
-            font-weight: 600;
+            font-size: {T['font_size_sm']};
+            font-weight: {T['font_weight_semibold']};
             letter-spacing: 0.02em;
         }}
         [data-testid="stMetricValue"] {{
             color: {T['text_primary']};
-            font-size: 24px;
-            font-weight: 600;
+            font-size: {T['font_size_xl']};
+            font-weight: {T['font_weight_semibold']};
         }}
         [data-testid="stMetricDelta"] {{
-            font-size: 13px;
-            font-weight: 600;
+            font-size: {T['font_size_md']};
+            font-weight: {T['font_weight_semibold']};
         }}
 
         /* [4] TW market convention: red up, green down */
@@ -90,8 +189,12 @@ def inject_css(theme: str) -> None:
             border-bottom: 1px solid {T['border_default']};
         }}
         [data-baseweb="tab"][aria-selected="true"] {{
-            color: {T['text_primary']} !important;
-            border-bottom: 2px solid {T['border_strong']} !important;
+            color: {T['tab_selected_text']} !important;
+            border-bottom: 2px solid {T['tab_selected_text']} !important;
+        }}
+        [data-baseweb="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"],
+        [data-baseweb="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"] p {{
+            color: {T['tab_selected_text']} !important;
         }}
         [data-baseweb="tab"][aria-selected="false"] {{
             color: {T['text_secondary']};
@@ -101,19 +204,19 @@ def inject_css(theme: str) -> None:
         [data-testid="stExpander"] {{
             background-color: {T['bg_surface']};
             border: 1px solid {T['border_subtle']};
-            border-radius: 6px;
+            border-radius: var(--radius-md);
         }}
         [data-testid="stExpander"] summary {{
             color: {T['text_primary']};
-            font-weight: 600;
+            font-weight: {T['font_weight_semibold']};
         }}
 
         /* [7] DataFrame */
         .stDataFrame [data-testid="stDataFrameHeader"] {{
             background-color: {T['bg_elevated']};
             color: {T['text_tertiary']};
-            font-size: 12px;
-            font-weight: 600;
+            font-size: {T['font_size_sm']};
+            font-weight: {T['font_weight_semibold']};
         }}
         .stDataFrame [aria-selected="true"] {{
             background-color: {T['bg_elevated']} !important;
@@ -123,9 +226,9 @@ def inject_css(theme: str) -> None:
         /* [8] Buttons and hit areas */
         .stButton > button {{
             min-height: 36px;
-            border-radius: 6px;
-            font-weight: 500;
-            transition: background-color 150ms ease, border-color 150ms ease;
+            border-radius: var(--radius-md);
+            font-weight: {T['font_weight_medium']};
+            transition: background-color var(--motion-fast) {T['easing_standard']}, border-color var(--motion-fast) {T['easing_standard']};
         }}
         .stButton > button[kind="primary"] {{
             background-color: {T['signal_buy']};
@@ -136,10 +239,39 @@ def inject_css(theme: str) -> None:
             background-color: {T['signal_buy']};
             filter: brightness(0.92);
         }}
-        .stButton > button[kind="secondary"] {{
-            background-color: {T['bg_elevated']};
-            color: {T['text_primary']};
-            border: 1px solid {T['border_default']};
+        .stButton > button[kind="secondary"],
+        [data-testid="baseButton-secondary"],
+        [data-testid="baseButton-secondaryFormSubmit"],
+        [data-testid="stBaseButton-secondary"],
+        [data-testid="stBaseButton-secondaryFormSubmit"] {{
+            background-color: var(--button-secondary-bg) !important;
+            color: {T['text_primary']} !important;
+            border: 1px solid {T['border_default']} !important;
+        }}
+        .stButton > button[kind="secondary"]:hover,
+        [data-testid="baseButton-secondary"]:hover,
+        [data-testid="baseButton-secondaryFormSubmit"]:hover,
+        [data-testid="stBaseButton-secondary"]:hover,
+        [data-testid="stBaseButton-secondaryFormSubmit"]:hover {{
+            background-color: var(--button-secondary-hover-bg) !important;
+            color: {T['text_primary']} !important;
+            border-color: {T['border_strong']} !important;
+        }}
+        .stButton > button[kind="secondary"] *,
+        [data-testid="baseButton-secondary"] *,
+        [data-testid="baseButton-secondaryFormSubmit"] *,
+        [data-testid="stBaseButton-secondary"] *,
+        [data-testid="stBaseButton-secondaryFormSubmit"] * {{
+            color: inherit !important;
+        }}
+        .stButton > button:disabled,
+        [data-testid="baseButton-secondary"]:disabled,
+        [data-testid="baseButton-secondaryFormSubmit"]:disabled,
+        [data-testid="stBaseButton-secondary"]:disabled,
+        [data-testid="stBaseButton-secondaryFormSubmit"]:disabled {{
+            background-color: var(--button-disabled-bg) !important;
+            color: var(--button-disabled-text) !important;
+            border-color: {T['border_subtle']} !important;
         }}
 
         /* [9] Focus ring */
@@ -159,7 +291,7 @@ def inject_css(theme: str) -> None:
         [data-baseweb="tab"]:focus-visible {{
             outline: 2px solid {T['focus_ring']} !important;
             outline-offset: 2px !important;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
         }}
         [data-testid="stDataFrame"] thead {{
             z-index: 1;
@@ -168,11 +300,11 @@ def inject_css(theme: str) -> None:
         /* [10] Signal classes */
         .signal-buy {{
             color: {T['signal_buy']};
-            font-weight: 600;
+            font-weight: {T['font_weight_semibold']};
         }}
         .signal-sell {{
             color: {T['signal_sell']};
-            font-weight: 600;
+            font-weight: {T['font_weight_semibold']};
         }}
         .signal-none {{
             color: {T['text_tertiary']};
@@ -182,7 +314,7 @@ def inject_css(theme: str) -> None:
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            margin-right: 6px;
+            margin-right: var(--space-sm);
             vertical-align: middle;
         }}
         .signal-dot.buy {{ background: {T['signal_buy']}; }}
@@ -210,7 +342,7 @@ def inject_css(theme: str) -> None:
             display: block;
             width: 100%;
             height: var(--skeleton-height, 16px);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             background: linear-gradient(90deg, {T['bg_surface']} 0%, {T['bg_elevated']} 45%, {T['bg_surface']} 90%);
             background-size: 220% 100%;
             animation: skeleton-shimmer 1.2s ease-in-out infinite;
@@ -260,7 +392,8 @@ def inject_css(theme: str) -> None:
         @media (max-width: 1024px) {{
             [data-testid="stButton"] button,
             [data-testid="stCheckbox"],
-            [data-testid="baseButton-secondary"] {{
+            [data-testid="baseButton-secondary"],
+            [data-testid="stBaseButton-secondary"] {{
                 min-height: 44px;
             }}
         }}

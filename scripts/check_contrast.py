@@ -28,9 +28,18 @@ def main() -> int:
             Check(f"{theme}: secondary text", tokens["text_secondary"], tokens["bg_base"], 4.5),
             Check(f"{theme}: tertiary text", tokens["text_tertiary"], tokens["bg_base"], 3.0),
             Check(f"{theme}: focus ring", tokens["focus_ring"], tokens["bg_base"], 3.0),
+            Check(f"{theme}: selected tab text", tokens["tab_selected_text"], tokens["bg_base"], 4.5),
+            Check(f"{theme}: sidebar primary text", tokens["text_primary"], tokens["sidebar_bg"], 4.5),
+            Check(f"{theme}: sidebar secondary text", tokens["sidebar_text_secondary"], tokens["sidebar_bg"], 4.5),
+            Check(f"{theme}: sidebar active nav text", tokens["text_primary"], tokens["sidebar_nav_active_bg"], 4.5),
+            Check(f"{theme}: input text", tokens["text_primary"], tokens["control_bg"], 4.5),
+            Check(f"{theme}: input placeholder", tokens["text_tertiary"], tokens["control_bg"], 3.0),
             Check(f"{theme}: buy signal text", tokens["semantic_up_text"], tokens["bg_base"], 3.0),
             Check(f"{theme}: sell signal text", tokens["semantic_down_text"], tokens["bg_base"], 3.0),
             Check(f"{theme}: primary button text", tokens["text_inverse"], tokens["signal_buy"], 4.5),
+            Check(f"{theme}: secondary button text", tokens["text_primary"], tokens["button_secondary_bg"], 4.5),
+            Check(f"{theme}: secondary button hover text", tokens["text_primary"], tokens["button_secondary_hover_bg"], 4.5),
+            Check(f"{theme}: disabled button text", tokens["button_disabled_text"], tokens["button_disabled_bg"], 3.0),
         ]
         for check in checks:
             ratio = contrast_ratio(check.foreground, check.background)

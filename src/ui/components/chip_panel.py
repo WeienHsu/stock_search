@@ -6,6 +6,7 @@ import streamlit as st
 
 from src.data.chip_fetcher import fetch_chip_snapshot, is_taiwan_ticker
 from src.repositories.chip_snapshot_repo import list_recent_snapshots
+from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
 def render_chip_panel(ticker: str, *, use_expander: bool = True) -> None:
@@ -94,27 +95,28 @@ def _snapshot_history(ticker: str) -> pd.DataFrame:
 
 
 def _historical_institutional_chart(history: pd.DataFrame) -> go.Figure:
+    palette = get_chart_palette()
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=history["date"],
         y=pd.to_numeric(history["institutional_foreign"], errors="coerce"),
         mode="lines+markers",
         name="外資",
-        line=dict(color="#7DAA92", width=2),
+        line=dict(color=palette.MORANDI_UP, width=2),
     ))
     fig.add_trace(go.Scatter(
         x=history["date"],
         y=pd.to_numeric(history["institutional_trust"], errors="coerce"),
         mode="lines+markers",
         name="投信",
-        line=dict(color="#6A9E8A", width=2),
+        line=dict(color=palette.ORANGE, width=2),
     ))
     fig.add_trace(go.Scatter(
         x=history["date"],
         y=pd.to_numeric(history["institutional_dealer"], errors="coerce"),
         mode="lines+markers",
         name="自營商",
-        line=dict(color="#A89070", width=2),
+        line=dict(color=palette.BROWN, width=2),
     ))
     _apply_chip_layout(fig, "籌碼快照趨勢（張）")
     fig.update_layout(height=260)
@@ -122,20 +124,21 @@ def _historical_institutional_chart(history: pd.DataFrame) -> go.Figure:
 
 
 def _historical_margin_chart(history: pd.DataFrame) -> go.Figure:
+    palette = get_chart_palette()
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=history["date"],
         y=pd.to_numeric(history["margin_balance"], errors="coerce"),
         mode="lines+markers",
         name="融資餘額",
-        line=dict(color="#7A9EB5", width=2),
+        line=dict(color=palette.BLUE, width=2),
     ))
     fig.add_trace(go.Scatter(
         x=history["date"],
         y=pd.to_numeric(history["short_balance"], errors="coerce"),
         mode="lines+markers",
         name="融券餘額",
-        line=dict(color="#A89070", width=1.5),
+        line=dict(color=palette.BROWN, width=1.5),
     ))
     _apply_chip_layout(fig, "籌碼快照趨勢（融資 / 融券）")
     fig.update_layout(height=260)
@@ -169,6 +172,7 @@ def _render_current_snapshot(institutional: pd.DataFrame, margin: pd.DataFrame, 
 
 
 def _institutional_flow_chart(df: pd.DataFrame) -> go.Figure:
+    palette = get_chart_palette()
     fig = go.Figure()
     foreign = pd.to_numeric(df["foreign_net_lots"], errors="coerce").fillna(0)
     investment = pd.to_numeric(df["investment_trust_net_lots"], errors="coerce").fillna(0)
@@ -176,21 +180,22 @@ def _institutional_flow_chart(df: pd.DataFrame) -> go.Figure:
         x=df["date"],
         y=foreign,
         name="外資",
-        marker_color=["#7DAA92" if value >= 0 else "#C47E7E" for value in foreign],
+        marker_color=[palette.MORANDI_UP if value >= 0 else palette.MORANDI_DOWN for value in foreign],
     ))
     fig.add_trace(go.Bar(
         x=df["date"],
         y=investment,
         name="投信",
-        marker_color=["#6A9E8A" if value >= 0 else "#C87D6A" for value in investment],
+        marker_color=[palette.MORANDI_UP if value >= 0 else palette.MORANDI_DOWN for value in investment],
     ))
     _apply_chip_layout(fig, "近 5 日法人買賣超（張）")
     fig.update_layout(barmode="group", height=260)
-    fig.add_hline(y=0, line_color="#D4CEC8", line_width=1)
+    fig.add_hline(y=0, line_color=palette.BORDER, line_width=1)
     return fig
 
 
 def _margin_trend_chart(df: pd.DataFrame) -> go.Figure:
+    palette = get_chart_palette()
     fig = go.Figure()
     margin_balance = pd.to_numeric(df["margin_balance"], errors="coerce")
     short_balance = pd.to_numeric(df.get("short_balance", pd.Series(dtype=float)), errors="coerce")
@@ -199,7 +204,7 @@ def _margin_trend_chart(df: pd.DataFrame) -> go.Figure:
         y=margin_balance,
         mode="lines+markers",
         name="融資餘額",
-        line=dict(color="#7A9EB5", width=2),
+        line=dict(color=palette.BLUE, width=2),
     ))
     if short_balance.notna().any():
         fig.add_trace(go.Scatter(
@@ -207,7 +212,7 @@ def _margin_trend_chart(df: pd.DataFrame) -> go.Figure:
             y=short_balance,
             mode="lines+markers",
             name="融券餘額",
-            line=dict(color="#A89070", width=1.5),
+            line=dict(color=palette.BROWN, width=1.5),
             yaxis="y2",
         ))
         fig.update_layout(
@@ -225,16 +230,15 @@ def _margin_trend_chart(df: pd.DataFrame) -> go.Figure:
 
 
 def _apply_chip_layout(fig: go.Figure, title: str) -> None:
+    palette = get_chart_palette()
+    apply_chart_theme(fig, title=title)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=14)),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=45, b=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hovermode="x unified",
     )
-    fig.update_xaxes(showgrid=True, gridcolor="#D4CEC8")
-    fig.update_yaxes(showgrid=True, gridcolor="#D4CEC8")
+    fig.update_xaxes(showgrid=True, gridcolor=palette.BORDER)
+    fig.update_yaxes(showgrid=True, gridcolor=palette.BORDER)
 
 
 def _lots_text(value: object) -> str:

@@ -5,7 +5,8 @@ import streamlit as st
 from src.ai.prompts.news_synthesizer import generate_news_summary
 from src.ai.provider_chain import build_default_chain
 from src.ai.providers.base import AIProviderError, MissingAIProviderConfig
-from config.morandi_palette import MORANDI_DOWN, MORANDI_UP
+from src.ui.theme import get_current_theme
+from src.ui.theme.tokens import get_tokens
 from src.ui.utils.format_a11y import format_taipei_datetime
 
 
@@ -18,18 +19,19 @@ def render_news_section(
     score = sentiment.get("score", 0.0)
     label = sentiment.get("label", "neutral")
     count = sentiment.get("article_count", 0)
+    tokens = get_tokens(get_current_theme())
 
     if label == "positive":
-        color, icon = MORANDI_UP, "↑"
+        color, icon = tokens["semantic_up_text"], "↑"
     elif label == "negative":
-        color, icon = MORANDI_DOWN, "↓"
+        color, icon = tokens["semantic_down_text"], "↓"
     else:
-        color, icon = "#8A8480", "—"
+        color, icon = tokens["text_secondary"], "—"
 
     st.html(
         f"**市場情緒** &nbsp;&nbsp;"
         f'<span style="color:{color}; font-weight:600">{icon} {label.upper()} ({score:+.2f})</span>'
-        f'&nbsp; <span style="color:#8A8480; font-size:0.85em">{count} 篇新聞</span>'
+        f'&nbsp; <span style="color:{tokens["text_secondary"]}; font-size:0.85em">{count} 篇新聞</span>'
     )
 
     if not articles:
@@ -48,14 +50,14 @@ def render_news_section(
         if url:
             st.html(
                 f'<div style="font-size:0.88em; margin:4px 0">'
-                f'<span style="color:#8A8480">{date_str} {source}</span><br>'
-                f'<a href="{url}" target="_blank" style="color:#4A4540">{headline}</a>'
+                f'<span style="color:{tokens["text_secondary"]}">{date_str} {source}</span><br>'
+                f'<a href="{url}" target="_blank" style="color:{tokens["text_primary"]}">{headline}</a>'
                 f'</div>'
             )
         else:
             st.html(
                 f'<div style="font-size:0.88em; margin:4px 0">'
-                f'<span style="color:#8A8480">{date_str} {source}</span><br>'
+                f'<span style="color:{tokens["text_secondary"]}">{date_str} {source}</span><br>'
                 f'{headline}'
                 f'</div>'
             )

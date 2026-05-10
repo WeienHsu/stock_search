@@ -5,6 +5,8 @@ from typing import Literal
 
 import streamlit as st
 
+from src.ui.components._variants import EmptyStateVariant
+
 EmptyStateIcon = Literal["search", "data", "chart", "alert", "user", "settings"]
 
 _ICON_SVGS: dict[str, str] = {
@@ -24,18 +26,21 @@ def render_empty_state(
     action_label: str | None = None,
     action_key: str | None = None,
     action_type: str = "primary",
+    variant: EmptyStateVariant = "default",
 ) -> bool:
     """Render a reusable empty state and return True when its action is clicked."""
     icon_html = _icon_html(icon)
     safe_title = html.escape(title)
     safe_description = html.escape(description)
+    layout = _empty_state_layout(variant)
     with st.container(border=True):
         st.html(
             (
-                '<div role="status" aria-live="polite" style="text-align:center; padding:32px 16px;">'
+                f'<div role="status" aria-live="polite" style="text-align:center; padding:{layout["padding"]};">'
                 f"{icon_html}"
-                f'<div style="font-size:16px; font-weight:600; margin-bottom:4px;">{safe_title}</div>'
-                f'<div style="font-size:14px; color:var(--text-secondary); margin-bottom:16px;">{safe_description}</div>'
+                f'<div style="font-size:{layout["title_size"]}; font-weight:600; margin-bottom:4px;">{safe_title}</div>'
+                f'<div style="font-size:{layout["description_size"]}; color:var(--text-secondary); '
+                f'margin-bottom:{layout["description_margin"]};">{safe_description}</div>'
                 "</div>"
             )
         )
@@ -47,6 +52,23 @@ def render_empty_state(
                 width="stretch",
             )
     return False
+
+
+def _empty_state_layout(variant: EmptyStateVariant) -> dict[str, str]:
+    return {
+        "default": {
+            "padding": "32px 16px",
+            "title_size": "16px",
+            "description_size": "14px",
+            "description_margin": "16px",
+        },
+        "compact": {
+            "padding": "16px 12px",
+            "title_size": "14px",
+            "description_size": "13px",
+            "description_margin": "8px",
+        },
+    }[variant]
 
 
 def _slug(value: str) -> str:

@@ -12,6 +12,7 @@ from src.auth.session_cookie import (
 from src.core.current_user import current_user, current_user_is_admin
 from src.ui.theme import apply_theme
 from src.ui.sidebar import render_sidebar
+from src.ui.nav.command_palette import render_command_palette
 from src.ui.nav.keyboard_shortcuts import inject_shortcuts
 from src.ui.nav.page_keys import (
     ADMIN,
@@ -79,6 +80,16 @@ if "user_id" not in st.session_state:
 
 user_id = current_user()
 
+# ── Onboarding gate ──
+def _onboarding_completed(uid: str) -> bool:
+    from src.repositories import user_prefs_repo as _up
+    return bool(_up.get(uid, "onboarding").get("completed"))
+
+if not _onboarding_completed(user_id):
+    from src.ui.pages.onboarding_page import render as render_onboarding
+    render_onboarding(user_id)
+    st.stop()
+
 # ── Sidebar: user info + logout ──
 st.sidebar.markdown(f"**Stock Intelligence**")
 st.sidebar.caption(f"👤 {st.session_state.get('username', user_id)}")
@@ -88,8 +99,6 @@ if st.sidebar.button("登出", use_container_width=True):
         st.session_state.pop(key, None)
     st.session_state["_clear_auth_cookie"] = True
     st.rerun()
-
-st.sidebar.divider()
 
 # ── Navigation ──
 def _query_value(name: str) -> str:
@@ -120,7 +129,7 @@ navigation_sections = {
 }
 selected_page = st.navigation(navigation_sections, position="sidebar", expanded=True)
 inject_shortcuts()
-st.sidebar.divider()
+render_command_palette(user_id)
 
 pending_nav = st.session_state.pop("_pending_nav_page", None)
 pending_ticker = st.session_state.pop("_pending_ticker", None)
@@ -141,6 +150,13 @@ if target_key and target_key in page_by_key:
     if ticker:
         query_params["ticker"] = ticker
     st.switch_page(page_by_key[target_key], query_params=query_params or None)
+
+resolved_sidebar_ticker = st.session_state.pop("_resolved_sidebar_ticker", "")
+if resolved_sidebar_ticker:
+    st.session_state["sidebar_ticker"] = resolved_sidebar_ticker
+    st.session_state["_applied_query_ticker"] = resolved_sidebar_ticker
+    if _query_value("ticker"):
+        st.query_params["ticker"] = resolved_sidebar_ticker
 
 cfg = render_sidebar(user_id)
 selected_page.run()

@@ -1,7 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from config.morandi_palette import BACKGROUND, BORDER, TEXT_PRIMARY, MORANDI_DOWN, MORANDI_UP, BLUE
+from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
 def build_equity_curve(bt_df: pd.DataFrame) -> go.Figure:
@@ -18,31 +18,30 @@ def build_equity_curve(bt_df: pd.DataFrame) -> go.Figure:
         f"訊號 #{i+1} ({row['date']})<br>前瞻收盤：{row['forward_date']}<br>累積報酬：{v:+.2f}%"
         for i, (v, (_, row)) in enumerate(zip(equity_pct, bt_df.iterrows()))
     ]
-    colors = [MORANDI_UP if v >= 0 else MORANDI_DOWN for v in equity_pct]
+    palette = get_chart_palette()
+    colors = [palette.MORANDI_UP if v >= 0 else palette.MORANDI_DOWN for v in equity_pct]
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=x_labels,
         y=equity_pct,
         mode="lines+markers",
-        line=dict(color=BLUE, width=2),
+        line=dict(color=palette.BLUE, width=2),
         marker=dict(color=colors, size=7),
         name="累積報酬",
         text=hover_text,
         hoverinfo="text",
     ))
-    fig.add_hline(y=0, line_color=BORDER, line_width=1)
+    fig.add_hline(y=0, line_color=palette.BORDER, line_width=1)
 
+    apply_chart_theme(fig, title="Strategy D 累積報酬曲線（各訊號依序累計）")
     fig.update_layout(
-        paper_bgcolor=BACKGROUND, plot_bgcolor=BACKGROUND,
-        font=dict(color=TEXT_PRIMARY, size=12),
-        title=dict(text="Strategy D 累積報酬曲線（各訊號依序累計）", font=dict(size=14)),
         xaxis=dict(
-            showgrid=True, gridcolor=BORDER,
+            showgrid=True, gridcolor=palette.BORDER,
             title="訊號序號",
             type="category",
         ),
-        yaxis=dict(showgrid=True, gridcolor=BORDER, title="累積報酬 (%)"),
+        yaxis=dict(showgrid=True, gridcolor=palette.BORDER, title="累積報酬 (%)"),
         margin=dict(l=10, r=10, t=40, b=10),
         showlegend=False,
     )
@@ -55,7 +54,8 @@ def build_return_distribution(bt_df: pd.DataFrame) -> go.Figure:
         return go.Figure()
 
     bt_df = bt_df.sort_values("date").reset_index(drop=True)
-    colors = [MORANDI_UP if r >= 0 else MORANDI_DOWN for r in bt_df["forward_return_pct"]]
+    palette = get_chart_palette()
+    colors = [palette.MORANDI_UP if r >= 0 else palette.MORANDI_DOWN for r in bt_df["forward_return_pct"]]
 
     x_labels = [f"#{i+1}" for i in range(len(bt_df))]
     hover_text = [
@@ -72,18 +72,16 @@ def build_return_distribution(bt_df: pd.DataFrame) -> go.Figure:
         text=hover_text,
         hoverinfo="text",
     ))
-    fig.add_hline(y=0, line_color=BORDER, line_width=1)
+    fig.add_hline(y=0, line_color=palette.BORDER, line_width=1)
 
+    apply_chart_theme(fig, title="各訊號前瞻報酬（僅顯示有買點的直條）")
     fig.update_layout(
-        paper_bgcolor=BACKGROUND, plot_bgcolor=BACKGROUND,
-        font=dict(color=TEXT_PRIMARY, size=12),
-        title=dict(text="各訊號前瞻報酬（僅顯示有買點的直條）", font=dict(size=14)),
         xaxis=dict(
-            showgrid=True, gridcolor=BORDER,
+            showgrid=True, gridcolor=palette.BORDER,
             title="訊號序號",
             type="category",
         ),
-        yaxis=dict(showgrid=True, gridcolor=BORDER, title="報酬 (%)"),
+        yaxis=dict(showgrid=True, gridcolor=palette.BORDER, title="報酬 (%)"),
         margin=dict(l=10, r=10, t=40, b=10),
         showlegend=False,
     )

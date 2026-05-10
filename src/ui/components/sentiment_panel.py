@@ -17,6 +17,9 @@ _ALIGNMENT_TEXT = {
 }
 
 
+_PREDICTION_MARKET_SOURCES = {"polymarket"}
+
+
 def render_sentiment_panel(aggregate: dict) -> None:
     st.markdown("### 情緒儀表板")
     score = float(aggregate.get("score", 0.0) or 0.0)
@@ -32,8 +35,16 @@ def render_sentiment_panel(aggregate: dict) -> None:
         st.caption("尚無可用情緒來源")
         return
 
-    for source in sources:
+    news_sources = [s for s in sources if s.get("source") not in _PREDICTION_MARKET_SOURCES]
+    market_sources = [s for s in sources if s.get("source") in _PREDICTION_MARKET_SOURCES]
+
+    for source in news_sources:
         _render_source_row(source)
+
+    if market_sources:
+        st.caption("預測市場（反映總體市場情緒，非個股）")
+        for source in market_sources:
+            _render_source_row(source)
 
 
 def _render_source_row(source: dict) -> None:

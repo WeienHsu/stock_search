@@ -50,6 +50,16 @@ def _strategy_param_expander_label(strategy_id: str, title: str, active_strategi
     return f"{marker} {title}"
 
 
+def _sync_sidebar_ticker_state(session_state: dict, default_ticker: str, nav_ticker: str = "") -> None:
+    nav_ticker = str(nav_ticker or "").strip().upper()
+    if nav_ticker and nav_ticker != session_state.get("_applied_query_ticker"):
+        session_state["sidebar_ticker"] = nav_ticker
+        session_state["_applied_query_ticker"] = nav_ticker
+        return
+
+    session_state.setdefault("sidebar_ticker", str(default_ticker or "").strip().upper())
+
+
 def render_sidebar(user_id: str) -> dict:
     """Render sidebar and return a config dict with all user selections."""
     from src.repositories.preferences_repo import get_preferences, save_preferences
@@ -59,8 +69,6 @@ def render_sidebar(user_id: str) -> dict:
 
     defaults = _load_defaults()
     prefs = get_preferences(user_id)
-
-    st.sidebar.title("Stock Intelligence")
 
     # ── Theme selector ──
     saved_theme = prefs.get("theme", "morandi")
@@ -79,8 +87,6 @@ def render_sidebar(user_id: str) -> dict:
         prefs["theme"] = selected_theme
         save_preferences(user_id, prefs)
         st.rerun()
-
-    st.sidebar.divider()
 
     # ── Ticker input ──
     st.sidebar.markdown("**快速搜尋**")
@@ -108,11 +114,10 @@ def render_sidebar(user_id: str) -> dict:
         st.sidebar.caption("找不到符合的自選股")
 
     nav_ticker = normalize_query_ticker()
-    if nav_ticker and nav_ticker != st.session_state.get("_applied_query_ticker"):
-        st.session_state["sidebar_ticker"] = nav_ticker
-        st.session_state["_applied_query_ticker"] = nav_ticker
+    default_ticker = prefs.get("last_ticker", defaults["ui"]["default_ticker"])
+    _sync_sidebar_ticker_state(st.session_state, default_ticker, nav_ticker)
     ticker = st.sidebar.text_input(
-        "股票代號", value=nav_ticker or prefs.get("last_ticker", defaults["ui"]["default_ticker"]),
+        "股票代號",
         placeholder="e.g. 2330.TW / TSLA",
         key="sidebar_ticker",
     ).strip().upper()
@@ -151,8 +156,6 @@ def render_sidebar(user_id: str) -> dict:
         format_func=lambda value: granularity_options[value],
     )
 
-    st.sidebar.divider()
-
     # ── Strategy overlays ──
     all_strategies = list_strategies()
     saved_active = _normalize_saved_active_strategies(all_strategies, prefs.get("active_strategies"))
@@ -184,7 +187,6 @@ def render_sidebar(user_id: str) -> dict:
 
     strategy_d_params, strategy_kd_params = build_strategy_params(defaults, prefs)
 
-    st.sidebar.divider()
     st.sidebar.markdown("**MA 均線**")
     ma_periods = st.sidebar.multiselect(
         "顯示均線",

@@ -29,6 +29,8 @@ from src.ui.components.news_card import render_news_section
 from src.ui.components.sentiment_panel import render_sentiment_panel
 from src.ui.layout.page_header import Action, Kpi, render_page_header
 from src.ui.nav.page_keys import LABEL_BY_KEY, MARKET, WORKSTATION
+from src.ui.theme.plotly_template import get_chart_palette
+from src.ui.utils.ticker_display import resolved_display_ticker, should_sync_display_ticker
 from src.sentiment import aggregate_sentiment
 
 import src.strategies.strategy_d   # ensure registration
@@ -37,12 +39,6 @@ import src.strategies.bias_strategy
 
 _PERIOD_DAYS = {"1M": 31, "3M": 92, "6M": 183, "1Y": 365, "3Y": 1095, "5Y": 1825}
 
-# Per-strategy marker colors (Morandi palette)
-_LAYER_COLORS = {
-    "strategy_d":  {"buy": "#A87650", "sell": "#5985A0"},
-    "strategy_kd": {"buy": "#5C8A75", "sell": "#A07890"},
-    "bias":        {"buy": "#7A6A98", "sell": "#806A50"},
-}
 # Per-strategy glyph distinction: D uses solid triangles, KD uses hollow, Bias uses diamonds
 _LAYER_GLYPHS = {
     "strategy_d":  {"buy": "▼", "sell": "▲"},
@@ -54,6 +50,15 @@ _STRATEGY_LABELS = {
     "strategy_kd": "Strategy KD",
     "bias":        "Bias",
 }
+
+
+def _layer_colors() -> dict[str, dict[str, str]]:
+    palette = get_chart_palette()
+    return {
+        "strategy_d": {"buy": palette.ORANGE, "sell": palette.BLUE},
+        "strategy_kd": {"buy": palette.MORANDI_UP, "sell": palette.PURPLE},
+        "bias": {"buy": palette.PURPLE, "sell": palette.BROWN},
+    }
 
 
 def render(cfg: dict, user_id: str) -> None:
@@ -83,6 +88,13 @@ def render(cfg: dict, user_id: str) -> None:
     if df_full.empty:
         render_empty_state("chart", "無法取得價格資料", f"請確認 {ticker} 代號是否正確，或稍後再試。")
         return
+
+    display_ticker = resolved_display_ticker(ticker)
+    if should_sync_display_ticker(ticker, display_ticker):
+        st.session_state["_resolved_sidebar_ticker"] = display_ticker
+        st.session_state["_pending_ticker"] = display_ticker
+        st.rerun()
+    ticker = display_ticker
 
     # ── Compute indicators on full 10Y to avoid short-period row shortage ──
     sd_params = cfg["strategy_d"]
@@ -120,6 +132,8 @@ def render(cfg: dict, user_id: str) -> None:
     today_sell = False
     signal_layers: list[SignalLayer] = []
     df_s: pd.DataFrame | None = None  # Strategy D diagnose dataframe
+    layer_colors = _layer_colors()
+    default_palette = get_chart_palette()
 
     for strategy_id in active_strategies:
         try:
@@ -133,7 +147,7 @@ def render(cfg: dict, user_id: str) -> None:
             if any(d == today_str for d in sell_dates):
                 today_sell = True
 
-            colors = _LAYER_COLORS.get(strategy_id, {"buy": "#C8A86A", "sell": "#5B7FA8"})
+            colors = layer_colors.get(strategy_id, {"buy": default_palette.GOLD, "sell": default_palette.SIGNAL_SELL})
             glyphs = _LAYER_GLYPHS.get(strategy_id, {"buy": "▼", "sell": "▲"})
             signal_layers.append(SignalLayer(
                 strategy_id=strategy_id,
@@ -187,7 +201,9 @@ def render(cfg: dict, user_id: str) -> None:
         signal_layers=signal_layers,
     )
 
-    tab_signal, tab_ma, tab_chip, tab_diag = st.tabs(["訊號判讀", "均線分析", "籌碼", "條件診斷"])
+    tab_signal, tab_ma, tab_chip, tab_diag, tab_tv = st.tabs(
+        ["訊號判讀", "均線分析", "籌碼", "條件診斷", "進階圖表"]
+    )
     with tab_signal:
         render_integrated_signal(df_full, ma_summary, signal_layers, vp_ctx, use_expander=False)
     with tab_ma:
@@ -199,6 +215,9 @@ def render(cfg: dict, user_id: str) -> None:
             _render_strategy_d_diagnosis(df_full, df_s, sd_params, vp_ctx)
         else:
             st.caption("Strategy D 未啟用")
+    with tab_tv:
+        from src.ui.components.tradingview_chart import render_tradingview_chart
+        render_tradingview_chart(ticker)
 
     with st.expander("AI 解讀", expanded=False):
         _render_ai_signal_explainer(
@@ -341,6 +360,9 @@ def _render_kline_fragment(
         },
     )
     st.caption("提示：框選可縮放 X 軸，平移或縮放後價格 Y 軸會依可視範圍自動調整。底部滑桿可查看更早歷史。點擊 ↩ 重置 或圖表右上角「Reset axes」可回到選定期間。")
+    if indicator_flags["show_volume_profile"]:
+        from src.ui.components.disclaimer_badge import render_disclaimer_badge
+        render_disclaimer_badge("Volume Profile 含 Estimated Bar Delta，為估算值，僅供參考，非逐筆成交數據")
 
 
 def _chart_indicator_flags(cfg: dict, chart_df: pd.DataFrame) -> dict[str, bool]:

@@ -35,13 +35,22 @@ def inject_shortcuts() -> None:
 
 
 def _shortcut_script() -> str:
+    return f"""
+<script>
+{_shortcut_script_body()}
+</script>
+"""
+
+
+def _shortcut_script_body() -> str:
     known_paths = json.dumps(_KNOWN_PAGE_PATHS)
     targets = json.dumps(_SHORTCUT_TARGETS)
     return f"""
-<script>
 (function() {{
-  if (window.__stockSearchShortcutsInstalled) return;
-  window.__stockSearchShortcutsInstalled = true;
+  const hostWindow = window.parent && window.parent !== window ? window.parent : window;
+  const root = hostWindow.document || document;
+  if (hostWindow.__stockSearchShortcutsInstalled) return;
+  hostWindow.__stockSearchShortcutsInstalled = true;
 
   const knownPagePaths = new Set({known_paths});
   const shortcutTargets = {targets};
@@ -54,7 +63,7 @@ def _shortcut_script() -> str:
   }}
 
   function focusQuickSearch() {{
-    const sidebar = document.querySelector('[data-testid="stSidebar"]') || document;
+    const sidebar = root.querySelector('[data-testid="stSidebar"]') || root;
     const input =
       sidebar.querySelector('input[placeholder="輸入代號或名稱"]') ||
       sidebar.querySelector('input[aria-label="搜尋股票"]') ||
@@ -65,7 +74,7 @@ def _shortcut_script() -> str:
   }}
 
   function pageUrl(pageKey) {{
-    const url = new URL(window.location.href);
+    const url = new URL(hostWindow.location.href);
     const parts = url.pathname.split("/").filter(Boolean);
     if (parts.length && knownPagePaths.has(parts[parts.length - 1])) {{
       parts.pop();
@@ -77,10 +86,10 @@ def _shortcut_script() -> str:
   }}
 
   function findNavLink(pageKey) {{
-    const links = Array.from(document.querySelectorAll('a[href]'));
+    const links = Array.from(root.querySelectorAll('a[href]'));
     return links.find(function(link) {{
       try {{
-        const url = new URL(link.getAttribute("href"), window.location.href);
+        const url = new URL(link.getAttribute("href"), hostWindow.location.href);
         const parts = url.pathname.split("/").filter(Boolean);
         return parts.length && parts[parts.length - 1] === pageKey;
       }} catch (_) {{
@@ -95,14 +104,28 @@ def _shortcut_script() -> str:
       link.click();
       return;
     }}
-    window.location.assign(pageUrl(pageKey));
+    hostWindow.location.assign(pageUrl(pageKey));
   }}
 
-  document.addEventListener("keydown", function(event) {{
-    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (isTypingTarget(event.target)) return;
+  function openCommandPalette() {{
+    window.dispatchEvent(new CustomEvent("stock-search:open-command-palette"));
+    hostWindow.dispatchEvent(new CustomEvent("stock-search:open-command-palette"));
+  }}
+
+  root.addEventListener("keydown", function(event) {{
+    if (event.defaultPrevented || event.altKey) return;
 
     const key = String(event.key || "").toLowerCase();
+    if ((event.metaKey || event.ctrlKey) && key === "k") {{
+      event.preventDefault();
+      openCommandPalette();
+      pendingGAt = 0;
+      return;
+    }}
+
+    if (event.metaKey || event.ctrlKey) return;
+    if (isTypingTarget(event.target)) return;
+
     const now = Date.now();
 
     if (key === "/") {{
@@ -130,5 +153,4 @@ def _shortcut_script() -> str:
     }}
   }});
 }})();
-</script>
 """

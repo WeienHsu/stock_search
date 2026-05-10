@@ -11,8 +11,11 @@ _BASE = Path(__file__).parents[3] / "data" / "users"
 class JsonBackend(RepositoryBase):
     """Stores each user's data as JSON files under data/users/{user_id}/."""
 
+    def __init__(self, base_dir: Path | None = None):
+        self._base = base_dir or _BASE
+
     def _path(self, user_id: str, key: str) -> Path:
-        p = _BASE / user_id
+        p = self._base / user_id
         p.mkdir(parents=True, exist_ok=True)
         return p / f"{key}.json"
 
@@ -38,6 +41,22 @@ class JsonBackend(RepositoryBase):
 
     def purge_user(self, user_id: str) -> None:
         import shutil
-        user_dir = _BASE / user_id
+        user_dir = self._base / user_id
         if user_dir.exists():
             shutil.rmtree(user_dir)
+
+    def get_user_preference(self, user_id: str, namespace: str, default: Any = None) -> Any:
+        return self.get(user_id, _user_preference_key(namespace), default=default)
+
+    def set_user_preference(self, user_id: str, namespace: str, payload: dict[str, Any]) -> None:
+        self.save(user_id, _user_preference_key(namespace), payload)
+
+    def patch_user_preference(self, user_id: str, namespace: str, partial: dict[str, Any]) -> dict[str, Any]:
+        payload = self.get_user_preference(user_id, namespace, default={}) or {}
+        payload = {**payload, **partial}
+        self.set_user_preference(user_id, namespace, payload)
+        return payload
+
+
+def _user_preference_key(namespace: str) -> str:
+    return f"user_preferences__{namespace.replace('/', '_')}"

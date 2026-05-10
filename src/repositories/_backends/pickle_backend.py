@@ -14,12 +14,13 @@ class PickleBackend(RepositoryBase):
     Supports TTL via a sidecar .meta file.
     """
 
-    def __init__(self, subdir: str = "prices"):
+    def __init__(self, subdir: str = "prices", base_dir: Path | None = None):
         self._subdir = subdir
+        self._base = base_dir or _BASE
 
     def _path(self, user_id: str, key: str) -> Path:
         safe_key = key.replace("/", "_")
-        p = _BASE / self._subdir / user_id
+        p = self._base / self._subdir / user_id
         p.mkdir(parents=True, exist_ok=True)
         return p / f"{safe_key}.pkl"
 
@@ -52,7 +53,7 @@ class PickleBackend(RepositoryBase):
                 path.unlink()
 
     def clear_user(self, user_id: str) -> int:
-        cache_dir = _BASE / self._subdir / user_id
+        cache_dir = self._base / self._subdir / user_id
         if not cache_dir.exists():
             return 0
         deleted = 0
@@ -68,3 +69,19 @@ class PickleBackend(RepositoryBase):
 
     def exists(self, user_id: str, key: str) -> bool:
         return self._path(user_id, key).exists()
+
+    def get_user_preference(self, user_id: str, namespace: str, default: Any = None) -> Any:
+        return self.get(user_id, _user_preference_key(namespace), default=default)
+
+    def set_user_preference(self, user_id: str, namespace: str, payload: dict[str, Any]) -> None:
+        self.save(user_id, _user_preference_key(namespace), payload)
+
+    def patch_user_preference(self, user_id: str, namespace: str, partial: dict[str, Any]) -> dict[str, Any]:
+        payload = self.get_user_preference(user_id, namespace, default={}) or {}
+        payload = {**payload, **partial}
+        self.set_user_preference(user_id, namespace, payload)
+        return payload
+
+
+def _user_preference_key(namespace: str) -> str:
+    return f"user_preferences__{namespace}"

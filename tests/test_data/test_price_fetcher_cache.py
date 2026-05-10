@@ -64,6 +64,108 @@ def test_fetch_prices_saves_downloaded_data(monkeypatch):
     assert saved["df"].equals(result)
 
 
+def test_fetch_prices_falls_back_to_two_when_tw_has_no_data(monkeypatch):
+    raw = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-05-01"]),
+            "Open": [1],
+            "High": [2],
+            "Low": [1],
+            "Close": [2],
+            "Volume": [100],
+        }
+    ).set_index("Date")
+    downloads = []
+    saved = {}
+    resolutions = {}
+
+    def fake_download(ticker, *args, **kwargs):
+        downloads.append(ticker)
+        return pd.DataFrame() if ticker == "3081.TW" else raw
+
+    monkeypatch.setattr(price_fetcher, "cache_ttl_seconds", lambda ticker, granularity: 456)
+    monkeypatch.setattr(price_fetcher, "get_price_cache", lambda key, ttl_override=None: None)
+    monkeypatch.setattr(price_fetcher, "get_resolved_ticker", lambda ticker: None)
+    monkeypatch.setattr(price_fetcher.yf, "download", fake_download)
+    monkeypatch.setattr(
+        price_fetcher,
+        "save_price_cache",
+        lambda key, df: saved.update({"key": key, "df": df}),
+    )
+    monkeypatch.setattr(
+        price_fetcher,
+        "save_ticker_resolution",
+        lambda ticker, resolved: resolutions.update({ticker: resolved}),
+    )
+
+    result = price_fetcher.fetch_prices("3081.TW", period="1Y")
+
+    assert downloads == ["3081.TW", "3081.TWO"]
+    assert result["date"].tolist() == ["2026-05-01"]
+    assert saved["key"] == "3081.TWO_1y_daily"
+    assert resolutions == {"3081.TW": "3081.TWO"}
+
+
+def test_fetch_prices_uses_cached_two_resolution_before_trying_tw(monkeypatch):
+    raw = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-05-01"]),
+            "Open": [1],
+            "High": [2],
+            "Low": [1],
+            "Close": [2],
+            "Volume": [100],
+        }
+    ).set_index("Date")
+    downloads = []
+
+    def fake_download(ticker, *args, **kwargs):
+        downloads.append(ticker)
+        return raw
+
+    monkeypatch.setattr(price_fetcher, "cache_ttl_seconds", lambda ticker, granularity: 456)
+    monkeypatch.setattr(price_fetcher, "get_price_cache", lambda key, ttl_override=None: None)
+    monkeypatch.setattr(price_fetcher, "get_resolved_ticker", lambda ticker: "3081.TWO")
+    monkeypatch.setattr(price_fetcher.yf, "download", fake_download)
+    monkeypatch.setattr(price_fetcher, "save_price_cache", lambda key, df: None)
+    monkeypatch.setattr(price_fetcher, "save_ticker_resolution", lambda ticker, resolved: None)
+
+    result = price_fetcher.fetch_prices("3081.TW", period="1Y")
+
+    assert result["date"].tolist() == ["2026-05-01"]
+    assert downloads == ["3081.TWO"]
+
+
+def test_fetch_prices_keeps_tw_when_tw_has_data(monkeypatch):
+    raw = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-05-01"]),
+            "Open": [1],
+            "High": [2],
+            "Low": [1],
+            "Close": [2],
+            "Volume": [100],
+        }
+    ).set_index("Date")
+    downloads = []
+
+    def fake_download(ticker, *args, **kwargs):
+        downloads.append(ticker)
+        return raw
+
+    monkeypatch.setattr(price_fetcher, "cache_ttl_seconds", lambda ticker, granularity: 456)
+    monkeypatch.setattr(price_fetcher, "get_price_cache", lambda key, ttl_override=None: None)
+    monkeypatch.setattr(price_fetcher, "get_resolved_ticker", lambda ticker: None)
+    monkeypatch.setattr(price_fetcher.yf, "download", fake_download)
+    monkeypatch.setattr(price_fetcher, "save_price_cache", lambda key, df: None)
+    monkeypatch.setattr(price_fetcher, "save_ticker_resolution", lambda ticker, resolved: None)
+
+    result = price_fetcher.fetch_prices("2330.TW", period="1Y")
+
+    assert result["date"].tolist() == ["2026-05-01"]
+    assert downloads == ["2330.TW"]
+
+
 def test_fetch_quote_uses_quote_ttl(monkeypatch):
     cached = pd.DataFrame(
         {

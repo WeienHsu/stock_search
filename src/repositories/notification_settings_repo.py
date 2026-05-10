@@ -22,6 +22,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "price_alert_channels": ["inbox"],
     "strategy_alert_channels": ["inbox"],
     "weekly_digest_channels": ["inbox"],
+    "daily_digest_channels": ["inbox"],
 }
 
 
@@ -41,6 +42,7 @@ def channels_for(user_id: str, event_type: str) -> list[str]:
         "price_alert": "price_alert_channels",
         "strategy_alert": "strategy_alert_channels",
         "weekly_digest": "weekly_digest_channels",
+        "daily_digest": "daily_digest_channels",
     }.get(event_type, "price_alert_channels")
     channels = settings.get(key) or ["inbox"]
     enabled = []

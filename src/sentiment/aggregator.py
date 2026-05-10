@@ -8,6 +8,7 @@ import streamlit as st
 from src.data.dynamic_ttl import get_ttl
 from src.repositories.market_data_cache_repo import get_market_cache, save_market_cache
 from src.sentiment.scorers.vader import label_for_score
+from src.sentiment.scorers.polymarket_scorer import fetch_polymarket_sentiment
 from src.sentiment.sources.news_finnhub import source_from_articles
 from src.sentiment.sources.ptt import fetch_ptt_sentiment
 from src.sentiment.sources.reddit import fetch_reddit_sentiment
@@ -51,6 +52,7 @@ def _aggregate_sentiment_uncached(
 
     sources = [source_from_articles(articles or [])]
     external_fetchers = fetchers or {
+        "polymarket": fetch_polymarket_sentiment,
         "reddit": fetch_reddit_sentiment,
         "stocktwits": fetch_stocktwits_sentiment,
         "ptt": fetch_ptt_sentiment,
@@ -140,6 +142,7 @@ def _unavailable_source(name: str, message: str) -> dict[str, Any]:
 
 def _friendly_unavailable_message(name: str) -> str:
     labels = {
+        "polymarket": "Polymarket 暫不可用",
         "reddit": "Reddit 暫不可用",
         "stocktwits": "Stocktwits 暫不可用",
         "ptt": "PTT 暫不可用",

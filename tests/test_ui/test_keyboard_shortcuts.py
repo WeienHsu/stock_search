@@ -11,7 +11,8 @@ def test_shortcut_script_contains_required_shortcuts():
     assert "isTypingTarget(event.target)" in script
     assert "findNavLink(pageKey)" in script
     assert "link.click()" in script
-    assert "window.location.assign" in script
+    assert "hostWindow.location.assign" in script
+    assert "root.addEventListener" in script
 
 
 def test_inject_shortcuts_uses_streamlit_html_with_javascript(monkeypatch):

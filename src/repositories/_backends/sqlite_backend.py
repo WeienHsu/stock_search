@@ -31,6 +31,15 @@ class SqliteBackend(RepositoryBase):
                 PRIMARY KEY (user_id, key)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                user_id    TEXT NOT NULL,
+                namespace  TEXT NOT NULL,
+                payload    TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (user_id, namespace)
+            )
+        """)
         conn.commit()
         return conn
 
@@ -67,3 +76,26 @@ class SqliteBackend(RepositoryBase):
     def purge_user(self, user_id: str) -> None:
         with self._conn() as conn:
             conn.execute("DELETE FROM kv_store WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM user_preferences WHERE user_id = ?", (user_id,))
+
+    def get_user_preference(self, user_id: str, namespace: str, default: Any = None) -> Any:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT payload FROM user_preferences WHERE user_id = ? AND namespace = ?",
+                (user_id, namespace),
+            ).fetchone()
+        return json.loads(row[0]) if row else default
+
+    def set_user_preference(self, user_id: str, namespace: str, payload: dict[str, Any]) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO user_preferences (user_id, namespace, payload, updated_at)
+                   VALUES (?, ?, ?, ?)""",
+                (user_id, namespace, json.dumps(payload, ensure_ascii=False), time.time()),
+            )
+
+    def patch_user_preference(self, user_id: str, namespace: str, partial: dict[str, Any]) -> dict[str, Any]:
+        payload = self.get_user_preference(user_id, namespace, default={}) or {}
+        payload = {**payload, **partial}
+        self.set_user_preference(user_id, namespace, payload)
+        return payload

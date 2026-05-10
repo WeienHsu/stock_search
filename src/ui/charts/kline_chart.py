@@ -10,8 +10,8 @@ import streamlit.components.v1 as components
 
 from src.indicators.candlestick_patterns import detect_candlestick_patterns
 from src.indicators.ma_analysis import format_inline_label
-from src.indicators.volume_profile import compute_volume_profile
-from src.ui.theme.plotly_template import apply_chart_theme
+from src.ui.charts.volume_profile import build_delta_profile_overlay
+from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
 @dataclass
@@ -65,15 +65,7 @@ def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
 
 
 def _get_palette():
-    try:
-        import streamlit as st
-        if st.session_state.get("theme") == "dark":
-            import config.dark_palette as P
-            return P
-    except Exception:
-        pass
-    import config.morandi_palette as P
-    return P
+    return get_chart_palette()
 
 
 def _apply_layout(fig: go.Figure, title: str = "") -> None:
@@ -119,7 +111,7 @@ def _signal_traces_below(
         x=sig_df["date"],
         y=sig_df["low"] * 0.985,
         mode="markers",
-        marker=dict(symbol="triangle-up", size=15, color=P.GOLD, line=dict(color="#ffffff", width=1)),
+        marker=dict(symbol="triangle-up", size=15, color=P.GOLD, line=dict(color=P.MARKER_BORDER, width=1)),
         name="Strategy D",
     )]
 
@@ -435,45 +427,7 @@ def build_combined_chart(
 
 
 def _volume_profile_overlay(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
-    P = _get_palette()
-    profile = compute_volume_profile(df, n_days=60, n_bins=20)
-    top_zones = profile.get("top_zones", [])
-    if not top_zones or df.empty:
-        return [], []
-
-    current_close = float(pd.to_numeric(df["close"], errors="coerce").dropna().iloc[-1])
-    max_volume = max(float(zone["volume"]) for zone in top_zones) or 1.0
-    shapes = []
-    annotations = []
-    for idx, zone in enumerate(top_zones):
-        price = float(zone["price"])
-        is_poc = price == profile.get("poc_price")
-        color = P.MORANDI_DOWN if price > current_close else P.MORANDI_UP
-        width = 1.2 + (float(zone["volume"]) / max_volume) * 3.0
-        shapes.append(dict(
-            type="line",
-            xref="paper",
-            x0=0.78,
-            x1=1.0,
-            yref="y",
-            y0=price,
-            y1=price,
-            line=dict(color=color, width=width, dash="solid" if is_poc else "dot"),
-            opacity=0.72 if is_poc else 0.48,
-        ))
-        annotations.append(dict(
-            x=1.0,
-            y=price,
-            xref="paper",
-            yref="y",
-            xanchor="left",
-            showarrow=False,
-            text=("POC " if is_poc else "VP ") + f"{price:.2f}",
-            font=dict(color=color, size=10),
-        ))
-        if idx >= 2:
-            break
-    return shapes, annotations
+    return build_delta_profile_overlay(df, n_days=60, n_bins=20)
 
 
 def render_combined_chart(
