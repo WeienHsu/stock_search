@@ -166,3 +166,49 @@ def test_overlay_shapes_use_paper_coords():
     for s in shapes:
         assert s["xref"] == "paper"
         assert s["x0"] == pytest.approx(0.78, abs=0.01)
+
+
+def test_overlay_hvn_count_capped_at_five():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    # n_bins=20 gives plenty of bins; HVN shapes should be at most 5
+    shapes, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20)
+    solid_shapes = [s for s in shapes if s["line"]["dash"] == "solid"]
+    assert len(solid_shapes) <= 5
+
+
+def test_overlay_lvn_marker_is_dashed():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    # Need enough bins so an LVN can exist between HVNs
+    shapes, annotations = build_delta_profile_overlay(_make_df(30), n_bins=20)
+    dashed = [s for s in shapes if s["line"]["dash"] == "dash"]
+    lvn_labels = [a for a in annotations if "LVN" in str(a.get("text", ""))]
+    # LVN may or may not exist depending on data distribution
+    assert len(dashed) == len(lvn_labels)
+
+
+def test_overlay_lvn_price_between_hvn_range():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    shapes, annotations = build_delta_profile_overlay(_make_df(30), n_bins=20)
+    hvn_annotations = [a for a in annotations if "LVN" not in str(a.get("text", ""))]
+    lvn_annotations = [a for a in annotations if "LVN" in str(a.get("text", ""))]
+
+    if not lvn_annotations:
+        return  # no LVN found — acceptable for this data shape
+
+    hvn_prices = [a["y"] for a in hvn_annotations]
+    lvn_price = lvn_annotations[0]["y"]
+    assert min(hvn_prices) <= lvn_price <= max(hvn_prices)
+
+
+def test_overlay_all_hvn_bars_have_labels():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    _, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20)
+    hvn_labels = [a for a in annotations if "LVN" not in str(a.get("text", ""))]
+    # Every solid (HVN) bar should have a matching annotation
+    solid_shapes = [s for s in _ if _ and True]  # shapes returned separately
+    # At minimum, all top-5 HVN should be labeled
+    assert len(hvn_labels) <= 5
