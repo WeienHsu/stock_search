@@ -3,7 +3,6 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from src.data.exchange_mapper import ticker_to_tv_symbol
 
@@ -29,4 +28,4 @@ def render_tradingview_chart(ticker: str, *, height: int = 620, theme: str = "li
     symbol = ticker_to_tv_symbol(ticker)
     url = _build_widget_url(symbol, theme=theme)
     st.caption(f"TradingView · {symbol}　資料來源：[TradingView](https://www.tradingview.com)")
-    components.iframe(url, height=height, scrolling=False)
+    st.iframe(url, height=height)

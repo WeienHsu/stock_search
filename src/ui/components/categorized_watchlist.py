@@ -12,7 +12,7 @@ from src.ui.components.sidebar_search import build_search_candidates, format_can
 from src.ui.utils.format_a11y import format_taipei_datetime
 
 
-def render_categorized_watchlist(user_id: str) -> str | None:
+def render_categorized_watchlist(user_id: str, *, compact: bool = False) -> str | None:
     categories = list_categories(user_id)
     if not categories:
         st.info("尚未建立分類自選")
@@ -25,6 +25,8 @@ def render_categorized_watchlist(user_id: str) -> str | None:
         with tab:
             items = _items_for_category(user_id, category)
             df = build_watchlist_table(items, include_quotes=False)
+            if compact:
+                df = compact_watchlist_table(df)
             if df.empty:
                 st.caption("此分類尚無股票")
                 continue
@@ -32,6 +34,7 @@ def render_categorized_watchlist(user_id: str) -> str | None:
                 df,
                 hide_index=True,
                 width="stretch",
+                height=_watchlist_table_height(len(df), compact=compact),
                 key=f"categorized_watchlist_{category['id']}",
             )
             st.caption(f"最後更新：{format_taipei_datetime(pd.Timestamp.now(tz=TAIWAN_TZ).to_pydatetime())}")
@@ -63,6 +66,20 @@ def build_watchlist_table(items: list[dict], *, include_quotes: bool = True) -> 
             "PE": "—",
         })
     return pd.DataFrame(rows)
+
+
+def compact_watchlist_table(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=["代碼", "名稱"])
+    columns = [column for column in ["代碼", "名稱"] if column in df.columns]
+    return df[columns].copy()
+
+
+def _watchlist_table_height(row_count: int, *, compact: bool) -> int | None:
+    if not compact:
+        return None
+    visible_rows = max(1, min(int(row_count or 1), 6))
+    return 38 + visible_rows * 35
 
 
 def _render_smart_ticker_search(user_id: str, categories: list[dict]) -> str | None:

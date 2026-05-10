@@ -86,10 +86,10 @@ def test_render_calls_iframe(monkeypatch):
 
     calls: list[dict] = []
 
-    def _fake_iframe(url: str, *, height: int, scrolling: bool) -> None:
+    def _fake_iframe(url: str, *, height: int) -> None:
         calls.append({"url": url, "height": height})
 
-    monkeypatch.setattr(tv_mod.components, "iframe", _fake_iframe)
+    monkeypatch.setattr(tv_mod.st, "iframe", _fake_iframe)
     monkeypatch.setattr(tv_mod.st, "caption", lambda *a, **kw: None)
 
     tv_mod.render_tradingview_chart("2330.TW")
@@ -103,7 +103,7 @@ def test_render_uses_correct_symbol_for_us(monkeypatch):
     import src.ui.components.tradingview_chart as tv_mod
 
     calls: list[dict] = []
-    monkeypatch.setattr(tv_mod.components, "iframe", lambda url, **kw: calls.append(url))
+    monkeypatch.setattr(tv_mod.st, "iframe", lambda url, **kw: calls.append(url))
     monkeypatch.setattr(tv_mod.st, "caption", lambda *a, **kw: None)
 
     tv_mod.render_tradingview_chart("TSLA")

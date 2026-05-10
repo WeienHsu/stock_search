@@ -9,7 +9,7 @@ from src.repositories.chip_snapshot_repo import list_recent_snapshots
 from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
-def render_chip_panel(ticker: str, *, use_expander: bool = True) -> None:
+def render_chip_panel(ticker: str, *, use_expander: bool = True, chart_layout: str = "columns") -> None:
     if not is_taiwan_ticker(ticker):
         return
 
@@ -38,13 +38,17 @@ def render_chip_panel(ticker: str, *, use_expander: bool = True) -> None:
 
         history = _snapshot_history(ticker)
         if len(history) >= 2:
-            col_flow, col_margin = st.columns([1.4, 1])
-            with col_flow:
+            if chart_layout == "stacked":
                 st.plotly_chart(_historical_institutional_chart(history), width="stretch")
-            with col_margin:
                 st.plotly_chart(_historical_margin_chart(history), width="stretch")
+            else:
+                col_flow, col_margin = st.columns([1.4, 1])
+                with col_flow:
+                    st.plotly_chart(_historical_institutional_chart(history), width="stretch")
+                with col_margin:
+                    st.plotly_chart(_historical_margin_chart(history), width="stretch")
         else:
-            _render_current_snapshot(institutional, margin, data)
+            _render_current_snapshot(institutional, margin, data, chart_layout=chart_layout)
 
     if use_expander:
         st.divider()
@@ -145,7 +149,7 @@ def _historical_margin_chart(history: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _render_current_snapshot(institutional: pd.DataFrame, margin: pd.DataFrame, data: dict) -> None:
+def _render_current_snapshot(institutional: pd.DataFrame, margin: pd.DataFrame, data: dict, *, chart_layout: str = "columns") -> None:
     cols = st.columns(4)
     cols[0].metric("外資", _lots_text(_latest_numeric(institutional, "foreign_net_lots", default=None)))
     cols[1].metric("投信", _lots_text(_latest_numeric(institutional, "investment_trust_net_lots", default=None)))
@@ -160,11 +164,15 @@ def _render_current_snapshot(institutional: pd.DataFrame, margin: pd.DataFrame, 
     if margin.empty:
         st.info("融資券資料暫不可用")
     if not institutional.empty and not margin.empty:
-        col_flow, col_margin = st.columns([1.4, 1])
-        with col_flow:
+        if chart_layout == "stacked":
             st.plotly_chart(_institutional_flow_chart(institutional), width="stretch")
-        with col_margin:
             st.plotly_chart(_margin_trend_chart(margin), width="stretch")
+        else:
+            col_flow, col_margin = st.columns([1.4, 1])
+            with col_flow:
+                st.plotly_chart(_institutional_flow_chart(institutional), width="stretch")
+            with col_margin:
+                st.plotly_chart(_margin_trend_chart(margin), width="stretch")
     elif not institutional.empty:
         st.plotly_chart(_institutional_flow_chart(institutional), width="stretch")
     elif not margin.empty:

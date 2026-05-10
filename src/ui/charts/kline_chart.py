@@ -6,10 +6,11 @@ import json
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import streamlit.components.v1 as components
+import streamlit as _st_main
 
 from src.indicators.candlestick_patterns import detect_candlestick_patterns
 from src.indicators.ma_analysis import format_inline_label
+from src.ui.charts._y_axis_fit import build_post_script
 from src.ui.charts.volume_profile import build_delta_profile_overlay
 from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
@@ -423,6 +424,9 @@ def build_combined_chart(
         end_date = df["date"].iloc[-1]
         fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
 
+    # Store panel layout metadata for render_combined_chart's JS builder
+    fig.update_layout(meta={"panels": panels, "bias_period": bias_period})
+
     return fig
 
 
@@ -436,7 +440,7 @@ def render_combined_chart(
     key: str,
     config: dict | None = None,
 ) -> None:
-    """Render Plotly chart with client-side price Y fitting on every X relayout."""
+    """Render Plotly chart with viewport-aware Y fitting on every X relayout."""
     config = {
         "displayModeBar": True,
         "displaylogo": False,
@@ -449,92 +453,31 @@ def render_combined_chart(
     highs = _safe_numeric_list(df["high"]) if "high" in df.columns else []
     height = int(fig.layout.height or 700) + 20
 
-    post_script = f"""
-(function() {{
-  const gd = document.getElementById({json.dumps(div_id)});
-  if (!gd) return;
+    # Build sub-panel data from figure meta stored by build_combined_chart()
+    meta = fig.layout.meta or {}
+    panels: list[str] = list(meta.get("panels", ["main"])) if isinstance(meta, dict) else ["main"]
+    bias_period: int = int(meta.get("bias_period", 20)) if isinstance(meta, dict) else 20
 
-  const rawDates = {json.dumps(dates)};
-  const lows = {json.dumps(lows)};
-  const highs = {json.dumps(highs)};
-  const xs = rawDates.map(function(d) {{
-    const s = String(d);
-    const t = Date.parse(s.length > 10 ? s.replace(" ", "T") : s.slice(0, 10) + "T00:00:00");
-    return Number.isFinite(t) ? t : null;
-  }});
+    sub_panels: list[dict] = []
+    for row_idx, panel in enumerate(panels, start=1):
+        if panel in ("main", "kd"):
+            continue
+        axis = "yaxis" if row_idx == 1 else f"yaxis{row_idx}"
+        if panel == "macd":
+            arrays = [
+                _safe_numeric_list(df[col]) if col in df.columns else []
+                for col in ("histogram", "macd_line", "signal_line")
+            ]
+            sub_panels.append({"type": "macd", "axis": axis, "valueArrays": arrays})
+        elif panel == "bias":
+            col = f"bias_{bias_period}"
+            if col in df.columns:
+                sub_panels.append({"type": "bias", "axis": axis, "valueArrays": [_safe_numeric_list(df[col])]})
+        elif panel == "volume":
+            if "volume" in df.columns:
+                sub_panels.append({"type": "volume", "axis": axis, "valueArrays": [_safe_numeric_list(df["volume"])]})
 
-  function axisRange() {{
-    const candidates = [];
-    [gd.layout, gd._fullLayout].forEach(function(layout) {{
-      if (!layout) return;
-      ["xaxis"].concat(Object.keys(layout).filter(function(k) {{
-        return /^xaxis\\d+$/.test(k);
-      }})).forEach(function(axisKey) {{
-        if (layout[axisKey] && layout[axisKey].range) {{
-          candidates.push(layout[axisKey].range);
-        }}
-      }});
-    }});
-    for (const r of candidates) {{
-      if (!r || r.length < 2) continue;
-      const start = Date.parse(r[0]);
-      const end = Date.parse(r[1]);
-      if (Number.isFinite(start) && Number.isFinite(end)) {{
-        return [Math.min(start, end), Math.max(start, end)];
-      }}
-    }}
-    return null;
-  }}
-
-  function fitPriceYAxis() {{
-    const range = axisRange();
-    if (!range) return;
-
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (let i = 0; i < xs.length; i += 1) {{
-      const x = xs[i];
-      if (x === null || x < range[0] || x > range[1]) continue;
-      const lo = lows[i];
-      const hi = highs[i];
-      if (Number.isFinite(lo)) minY = Math.min(minY, lo);
-      if (Number.isFinite(hi)) maxY = Math.max(maxY, hi);
-    }}
-    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
-
-    let pad = (maxY - minY) * 0.06;
-    if (!Number.isFinite(pad) || pad <= 0) {{
-      pad = Math.max(Math.abs(maxY) * 0.02, 1);
-    }}
-    Plotly.relayout(gd, {{
-      "yaxis.range": [minY - pad, maxY + pad],
-      "yaxis.autorange": false
-    }});
-  }}
-
-  let raf = null;
-  function scheduleFit() {{
-    if (raf !== null) window.cancelAnimationFrame(raf);
-    raf = window.requestAnimationFrame(function() {{
-      raf = null;
-      fitPriceYAxis();
-    }});
-  }}
-
-  gd.on("plotly_relayout", function(eventData) {{
-    const keys = Object.keys(eventData || {{}});
-    const xChanged = keys.some(function(k) {{
-      return /^xaxis\\d*\\.range/.test(k) ||
-             /^xaxis\\d*\\.autorange$/.test(k) ||
-             /^xaxis\\d*\\.rangeslider/.test(k);
-    }});
-    if (xChanged) scheduleFit();
-  }});
-  gd.on("plotly_doubleclick", scheduleFit);
-  window.addEventListener("resize", scheduleFit);
-  setTimeout(scheduleFit, 100);
-}})();
-"""
+    post_script = build_post_script(div_id, dates, lows, highs, sub_panels)
     html = fig.to_html(
         include_plotlyjs="cdn",
         full_html=False,
@@ -542,7 +485,7 @@ def render_combined_chart(
         config=config,
         post_script=post_script,
     )
-    components.html(html, height=height, scrolling=False)
+    _st_main.iframe(html, height=height)
 
 
 # ── Standalone chart wrappers (for backtest_page and other callers) ──

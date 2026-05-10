@@ -32,13 +32,17 @@ def render(cfg: dict, user_id: str) -> None:
 
     left, right = st.columns([1.2, 1], gap="medium")
 
-    with left:
+    with right:
         with st.container():
-            st.markdown("### 分類自選")
-            selected = render_categorized_watchlist(user_id)
-            if selected:
-                st.session_state["workstation_active_ticker"] = selected
+            st.markdown("### 大盤即時看板")
+            _render_market_strip()
+            render_source_health_badge("taiex_realtime", "即時委買賣")
 
+        selected = _render_watchlist_drawer(user_id)
+        if selected:
+            st.session_state["workstation_active_ticker"] = selected
+
+    with left:
         ticker = str(st.session_state.get("workstation_active_ticker") or default_ticker).upper()
         with st.container():
             resolved_ticker = _render_workstation_kline(ticker, cfg)
@@ -46,17 +50,19 @@ def render(cfg: dict, user_id: str) -> None:
                 st.session_state["workstation_active_ticker"] = resolved_ticker
 
     with right:
-        with st.container():
-            st.markdown("### 大盤即時看板")
-            _render_market_strip()
-            render_source_health_badge("taiex_realtime", "即時委買賣")
-
         ticker = str(st.session_state.get("workstation_active_ticker") or default_ticker).upper()
         with st.container():
             st.markdown(f"### {ticker} 分時 / 詳細")
             _render_intraday_fragment(ticker)
             _render_l2_placeholder()
             render_stock_detail_tabs(ticker, user_id)
+
+
+def _render_watchlist_drawer(user_id: str) -> str | None:
+    with st.popover("自選 / 分類", width="stretch"):
+        st.caption("分類清單預設不載入行情欄位，用於快速切換標的。")
+        return render_categorized_watchlist(user_id, compact=True)
+    return None
 
 
 def _render_workstation_kline(ticker: str, cfg: dict) -> str:
@@ -133,7 +139,7 @@ def _render_workstation_kline(ticker: str, cfg: dict) -> str:
 
 @st.fragment(run_every=60)
 def _render_intraday_fragment(ticker: str) -> None:
-    render_intraday_tick_chart(ticker, key=f"workstation_intraday_top_{ticker}")
+    render_intraday_tick_chart(ticker, key=f"workstation_intraday_top_{ticker}", height=320)
 
 
 def _selected_ma_periods(cfg: dict) -> list[int]:

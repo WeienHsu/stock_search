@@ -106,7 +106,7 @@ def _render_step_holdings(user_id: str) -> None:
         df_in,
         column_config=_COLUMNS,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         key="ob_holdings_editor",
     )
 

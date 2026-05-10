@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.core.finnhub_mode import MissingFinnhubKey
@@ -20,6 +21,7 @@ from src.ui.components.intraday_tick_chart import render_intraday_tick_chart
 from src.ui.components.news_card import render_news_section
 from src.ui.components.sentiment_panel import render_sentiment_panel
 from src.ui.components.source_health_badge import render_source_health_badge
+from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
 def render_stock_detail_tabs(ticker: str, user_id: str) -> None:
@@ -27,10 +29,10 @@ def render_stock_detail_tabs(ticker: str, user_id: str) -> None:
     with tabs[0]:
         st.caption("技術面主要整合於左側 K 線與均線/形態/Volume Profile 圖層。")
     with tabs[1]:
-        render_intraday_tick_chart(ticker, key=f"stock_detail_intraday_tab_{ticker}")
+        render_intraday_tick_chart(ticker, key=f"stock_detail_intraday_tab_{ticker}", height=360)
     with tabs[2]:
         if is_taiwan_ticker(ticker):
-            render_chip_panel(ticker)
+            render_chip_panel(ticker, chart_layout="stacked")
         else:
             st.info("融資券資料僅支援台股")
     with tabs[3]:
@@ -60,8 +62,10 @@ def _render_revenue_tab(ticker: str) -> None:
         st.info("月營收資料暫不可用")
         st.caption(_source_health_text(["revenue_finmind", "revenue_mops"]))
         return
-    st.dataframe(df[["period", "revenue", "yoy_pct"]], hide_index=True, width="stretch")
-    st.line_chart(df, x="period", y="revenue", height=220)
+    st.caption("月營收為公司單月營業收入，單位通常為新台幣仟元；年增率為本月營收相較去年同月的增減百分比。")
+    st.dataframe(revenue_frame_for_display(df), hide_index=True, width="stretch")
+    chart_df = revenue_chart_frame(df)
+    st.line_chart(chart_df, x="月份", y="月營收(仟元)", height=260)
 
 
 def _render_major_holder_tab(ticker: str) -> None:
@@ -82,8 +86,7 @@ def _render_major_holder_tab(ticker: str) -> None:
     history = holder_history_to_frame(snapshot)
     if not history.empty and len(history) >= 2:
         st.markdown("**外資持股比率趨勢**")
-        chart_df = history.rename(columns={"date": "日期", "foreign_holding_pct": "外資持股比率(%)"})
-        st.line_chart(chart_df, x="日期", y="外資持股比率(%)", height=220)
+        st.plotly_chart(build_major_holder_trend_chart(history), width="stretch")
 
 
 def _render_news_tab(ticker: str, user_id: str) -> None:
@@ -106,8 +109,65 @@ def _render_news_tab(ticker: str, user_id: str) -> None:
 
 def revenue_frame_for_display(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
-        return pd.DataFrame(columns=["period", "revenue", "yoy_pct"])
-    return df[["period", "revenue", "yoy_pct"]]
+        return pd.DataFrame(columns=["月份", "月營收(仟元)", "年增率(%)"])
+    display = df[["period", "revenue", "yoy_pct"]].copy()
+    display = display.sort_values("period", ascending=False).reset_index(drop=True)
+    return display.rename(columns={
+        "period": "月份",
+        "revenue": "月營收(仟元)",
+        "yoy_pct": "年增率(%)",
+    })
+
+
+def revenue_chart_frame(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=["月份", "月營收(仟元)"])
+    chart = df[["period", "revenue"]].copy()
+    chart = chart.sort_values("period").reset_index(drop=True)
+    return chart.rename(columns={"period": "月份", "revenue": "月營收(仟元)"})
+
+
+def build_major_holder_trend_chart(history: pd.DataFrame) -> go.Figure:
+    palette = get_chart_palette()
+    chart_df = history[["date", "foreign_holding_pct"]].copy()
+    chart_df["foreign_holding_pct"] = pd.to_numeric(chart_df["foreign_holding_pct"], errors="coerce")
+    chart_df = chart_df.dropna(subset=["foreign_holding_pct"]).sort_values("date")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=chart_df["date"],
+        y=chart_df["foreign_holding_pct"],
+        mode="lines+markers",
+        name="外資持股比率",
+        line=dict(color=palette.BLUE, width=2),
+    ))
+    apply_chart_theme(fig, title="外資持股比率趨勢")
+    fig.update_layout(
+        height=280,
+        margin=dict(l=10, r=10, t=45, b=10),
+        hovermode="x unified",
+    )
+    fig.update_xaxes(showgrid=True, gridcolor=palette.BORDER)
+    fig.update_yaxes(
+        title="外資持股比率(%)",
+        range=_padded_pct_range(chart_df["foreign_holding_pct"]),
+        showgrid=True,
+        gridcolor=palette.BORDER,
+    )
+    return fig
+
+
+def _padded_pct_range(values: pd.Series) -> list[float] | None:
+    clean = pd.to_numeric(values, errors="coerce").dropna()
+    if clean.empty:
+        return None
+    lo = float(clean.min())
+    hi = float(clean.max())
+    if lo == hi:
+        pad = max(abs(lo) * 0.005, 0.2)
+    else:
+        pad = max((hi - lo) * 0.15, 0.2)
+    return [max(0.0, lo - pad), min(100.0, hi + pad)]
 
 
 def _source_health_text(source_ids: list[str]) -> str:

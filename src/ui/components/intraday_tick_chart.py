@@ -5,13 +5,12 @@ import json
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 
 from src.data.price_fetcher import fetch_prices_by_interval
 from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
 
 
-def build_intraday_tick_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
+def build_intraday_tick_chart(df: pd.DataFrame, ticker: str, *, height: int = 240) -> go.Figure:
     palette = get_chart_palette()
     fig = go.Figure()
     if not df.empty and {"date", "close"}.issubset(df.columns):
@@ -25,7 +24,7 @@ def build_intraday_tick_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
     apply_chart_theme(fig, title=f"{ticker} 即時分時")
     fig.update_layout(
         margin=dict(l=10, r=10, t=40, b=10),
-        height=240,
+        height=height,
         hovermode="x unified",
         dragmode="zoom",
     )
@@ -34,7 +33,7 @@ def build_intraday_tick_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
     return fig
 
 
-def render_intraday_tick_chart(ticker: str, *, key: str | None = None) -> None:
+def render_intraday_tick_chart(ticker: str, *, key: str | None = None, height: int = 265) -> None:
     try:
         df = fetch_prices_by_interval(ticker, "1m", period="1M")
     except Exception:
@@ -43,10 +42,10 @@ def render_intraday_tick_chart(ticker: str, *, key: str | None = None) -> None:
         st.info("1m 分時資料暫不可用")
         return
     chart_key = key or f"intraday_tick_chart_{ticker}"
-    _render_with_y_autofit(build_intraday_tick_chart(df, ticker), df, div_id=chart_key)
+    _render_with_y_autofit(build_intraday_tick_chart(df, ticker, height=max(120, height - 25)), df, div_id=chart_key, height=height)
 
 
-def _render_with_y_autofit(fig: go.Figure, df: pd.DataFrame, div_id: str) -> None:
+def _render_with_y_autofit(fig: go.Figure, df: pd.DataFrame, div_id: str, *, height: int = 265) -> None:
     """Render intraday chart with JS hook: Y-axis auto-fits to visible X range on zoom."""
     dates = df["date"].astype(str).tolist() if "date" in df.columns else []
     closes = [None if pd.isna(v) else float(v) for v in pd.to_numeric(df.get("close", pd.Series()), errors="coerce")] if not df.empty else []
@@ -110,4 +109,4 @@ def _render_with_y_autofit(fig: go.Figure, df: pd.DataFrame, div_id: str) -> Non
         config={"displayModeBar": True, "displaylogo": False, "scrollZoom": True, "responsive": True},
         post_script=post_script,
     )
-    components.html(html, height=265, scrolling=False)
+    st.iframe(html, height=height)

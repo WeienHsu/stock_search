@@ -24,7 +24,7 @@ def render_holdings_section(user_id: str) -> None:
         df_in,
         column_config=_COLUMNS,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         key="holdings_editor",
     )
 

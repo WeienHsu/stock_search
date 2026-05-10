@@ -1,7 +1,6 @@
 import json
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from src.auth.auth_manager import SESSION_TTL_SECONDS
 
@@ -32,7 +31,7 @@ def render_clear_auth_cookie() -> None:
 
 def _render_cookie_script(cookie: str) -> None:
     cookie_js = json.dumps(cookie)
-    components.html(
+    st.html(
         f"""
         <script>
         const cookieValue = {cookie_js};
@@ -42,6 +41,5 @@ def _render_cookie_script(cookie: str) -> None:
         }} catch (err) {{}}
         </script>
         """,
-        height=0,
-        width=0,
+        unsafe_allow_javascript=True,
     )

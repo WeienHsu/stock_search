@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.sentiment.score_glossary import SCORE_GLOSSARY_MARKDOWN, SCORE_HELP
+
 _LABEL_COLORS = {
     "positive": "#6A9E8A",
     "negative": "#C87D6A",
@@ -28,7 +30,10 @@ def render_sentiment_panel(aggregate: dict) -> None:
         "跨來源平均情緒",
         f"{score:+.2f}",
         _ALIGNMENT_TEXT.get(alignment, alignment),
+        help=SCORE_HELP,
     )
+    with st.expander("ⓘ 如何解讀情緒分數？", expanded=False):
+        st.markdown(SCORE_GLOSSARY_MARKDOWN)
 
     sources = aggregate.get("sources") or []
     if not sources:
