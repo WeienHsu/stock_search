@@ -181,6 +181,7 @@ def render_sidebar(user_id: str) -> dict:
     show_news = bool(prefs.get("show_news", True))
     show_volume_bar = bool(prefs.get("show_volume_bar", True))
     show_volume_profile = bool(prefs.get("show_volume_profile", True))
+    show_volume_profile_delta = bool(prefs.get("show_volume_profile_delta", False))
     show_candlestick_patterns = bool(prefs.get("show_candlestick_patterns", False))
     show_ma_cross_labels = bool(prefs.get("show_ma_cross_labels", False))
     bias_period = int(prefs.get("bias_period", defaults["bias"]["period"]))
@@ -208,6 +209,7 @@ def render_sidebar(user_id: str) -> dict:
         "show_volume_bar": show_volume_bar,
         "show_candlestick_patterns": show_candlestick_patterns,
         "show_volume_profile": show_volume_profile,
+        "show_volume_profile_delta": show_volume_profile_delta,
         "show_ma_cross_labels": show_ma_cross_labels,
         "bias_period": int(bias_period),
         "ma_periods": ma_periods,

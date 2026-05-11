@@ -13,6 +13,7 @@ def test_chart_indicator_flags_follow_settings_preferences():
         "show_bias": False,
         "show_volume_bar": True,
         "show_volume_profile": True,
+        "show_volume_profile_delta": True,
         "show_candlestick_patterns": False,
         "show_ma_cross_labels": True,
     }
@@ -24,6 +25,7 @@ def test_chart_indicator_flags_follow_settings_preferences():
         "show_bias": False,
         "show_volume_bar": True,
         "show_volume_profile": True,
+        "show_volume_profile_delta": True,
         "show_candlestick_patterns": False,
         "show_ma_cross_labels": True,
     }

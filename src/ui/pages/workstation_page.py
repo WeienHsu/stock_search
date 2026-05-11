@@ -124,6 +124,7 @@ def _render_workstation_kline(ticker: str, cfg: dict) -> str:
         show_signals=False,
         show_candlestick_patterns=bool(cfg.get("show_candlestick_patterns", True)),
         show_volume_profile=bool(cfg.get("show_volume_profile", False)),
+        show_volume_profile_delta=bool(cfg.get("show_volume_profile_delta", False)),
         ma_cross_events=ma_cross_events,
         granularity=granularity,
         uirevision=f"workstation_{ticker}_{granularity}",

@@ -345,6 +345,7 @@ def _render_kline_fragment(
         show_signals=True,
         show_candlestick_patterns=indicator_flags["show_candlestick_patterns"],
         show_volume_profile=indicator_flags["show_volume_profile"],
+        show_volume_profile_delta=indicator_flags["show_volume_profile_delta"],
         show_volume_bar=indicator_flags["show_volume_bar"],
         ma_cross_events=_recent_ma_cross_events(chart_df) if indicator_flags["show_ma_cross_labels"] else [],
         granularity=granularity,
@@ -362,7 +363,10 @@ def _render_kline_fragment(
     st.caption("提示：框選可縮放 X 軸，平移或縮放後價格 Y 軸會依可視範圍自動調整。底部滑桿可查看更早歷史。點擊 ↩ 重置 或圖表右上角「Reset axes」可回到選定期間。")
     if indicator_flags["show_volume_profile"]:
         from src.ui.components.disclaimer_badge import render_disclaimer_badge
-        render_disclaimer_badge("Volume Profile 含 Estimated Bar Delta，為估算值，僅供參考，非逐筆成交數據")
+        if indicator_flags["show_volume_profile_delta"]:
+            render_disclaimer_badge("Volume Profile 顯示 POC / VP2 / VP3 成交密集成本區；Estimated Delta 為 OHLCV 估算值，非逐筆成交真實 Delta。")
+        else:
+            render_disclaimer_badge("Volume Profile 顯示 POC / VP2 / VP3 成交密集成本區，僅供參考，非買賣建議。")
 
 
 def _chart_indicator_flags(cfg: dict, chart_df: pd.DataFrame) -> dict[str, bool]:
@@ -372,6 +376,7 @@ def _chart_indicator_flags(cfg: dict, chart_df: pd.DataFrame) -> dict[str, bool]
         "show_bias": bool(cfg.get("show_bias", False)),
         "show_volume_bar": bool(cfg.get("show_volume_bar", False)),
         "show_volume_profile": bool(cfg.get("show_volume_profile", False)),
+        "show_volume_profile_delta": bool(cfg.get("show_volume_profile_delta", False)),
         "show_candlestick_patterns": bool(cfg.get("show_candlestick_patterns", False)),
         "show_ma_cross_labels": bool(cfg.get("show_ma_cross_labels", False)),
     }

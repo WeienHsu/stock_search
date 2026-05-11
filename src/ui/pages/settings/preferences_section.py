@@ -8,6 +8,9 @@ from src.ui.pages.settings.defaults import load_defaults
 
 def render_preferences_section(user_id: str) -> None:
     st.markdown("### 偏好設定")
+    if st.session_state.pop("_preferences_saved", False):
+        st.success("已儲存")
+
     prefs = get_preferences(user_id)
     defaults = load_defaults()
 
@@ -26,6 +29,13 @@ def render_preferences_section(user_id: str) -> None:
     with col2:
         show_volume_bar = st.checkbox("日成交量", value=bool(prefs.get("show_volume_bar", True)), key="settings_show_volume_bar")
         show_volume_profile = st.checkbox("Volume Profile", value=bool(prefs.get("show_volume_profile", True)), key="settings_show_volume_profile")
+        show_volume_profile_delta = st.checkbox(
+            "Volume Profile 顯示估算買賣壓",
+            value=bool(prefs.get("show_volume_profile_delta", False)),
+            key="settings_show_volume_profile_delta",
+            help="使用 OHLCV 估算價格區間的買賣壓，非逐筆成交真實 Delta。",
+            disabled=not show_volume_profile,
+        )
         show_candlestick_patterns = st.checkbox("K線形態", value=bool(prefs.get("show_candlestick_patterns", False)), key="settings_show_candlestick")
         show_ma_cross_labels = st.checkbox("MA交叉標註", value=bool(prefs.get("show_ma_cross_labels", False)), key="settings_show_ma_cross")
 
@@ -48,9 +58,11 @@ def render_preferences_section(user_id: str) -> None:
             "show_news": show_news,
             "show_volume_bar": show_volume_bar,
             "show_volume_profile": show_volume_profile,
+            "show_volume_profile_delta": show_volume_profile_delta,
             "show_candlestick_patterns": show_candlestick_patterns,
             "show_ma_cross_labels": show_ma_cross_labels,
             "bias_period": int(bias_period),
         })
         save_preferences(user_id, prefs)
-        st.success("已儲存")
+        st.session_state["_preferences_saved"] = True
+        st.rerun()

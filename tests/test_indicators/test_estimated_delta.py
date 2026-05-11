@@ -168,13 +168,45 @@ def test_overlay_shapes_use_paper_coords():
         assert s["x0"] == pytest.approx(0.78, abs=0.01)
 
 
-def test_overlay_hvn_count_capped_at_five():
+def test_overlay_annotations_are_anchored_outside_chart():
     from src.ui.charts.volume_profile import build_delta_profile_overlay
 
-    # n_bins=20 gives plenty of bins; HVN shapes should be at most 5
+    _, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20, current_price=110, show_delta=True)
+    profile_annotations = [
+        a for a in annotations
+        if "POC" in str(a.get("text", "")) or "VP" in str(a.get("text", "")) or "LVN" in str(a.get("text", ""))
+    ]
+
+    assert profile_annotations
+    assert all(a["x"] > 1 for a in profile_annotations)
+    assert all(a["xanchor"] == "left" for a in profile_annotations)
+    assert all(a["xshift"] > 0 for a in profile_annotations)
+
+
+def test_overlay_line_color_follows_current_price_position():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+    from src.ui.theme.plotly_template import get_chart_palette
+
+    palette = get_chart_palette()
+
+    red_shapes, _ = build_delta_profile_overlay(_make_df(20), n_bins=20, current_price=200)
+    red_hvn = [s for s in red_shapes if s["line"]["dash"] == "solid"]
+    assert red_hvn
+    assert all(s["line"]["color"] == palette.MORANDI_UP for s in red_hvn)
+
+    green_shapes, _ = build_delta_profile_overlay(_make_df(20), n_bins=20, current_price=1)
+    green_hvn = [s for s in green_shapes if s["line"]["dash"] == "solid"]
+    assert green_hvn
+    assert all(s["line"]["color"] == palette.MORANDI_DOWN for s in green_hvn)
+
+
+def test_overlay_hvn_count_capped_at_three():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    # n_bins=20 gives plenty of bins; HVN shapes should be at most POC + VP2 + VP3
     shapes, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20)
     solid_shapes = [s for s in shapes if s["line"]["dash"] == "solid"]
-    assert len(solid_shapes) <= 5
+    assert len(solid_shapes) <= 3
 
 
 def test_overlay_lvn_marker_is_dashed():
@@ -206,9 +238,38 @@ def test_overlay_lvn_price_between_hvn_range():
 def test_overlay_all_hvn_bars_have_labels():
     from src.ui.charts.volume_profile import build_delta_profile_overlay
 
-    _, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20)
+    shapes, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20)
     hvn_labels = [a for a in annotations if "LVN" not in str(a.get("text", ""))]
     # Every solid (HVN) bar should have a matching annotation
-    solid_shapes = [s for s in _ if _ and True]  # shapes returned separately
-    # At minimum, all top-5 HVN should be labeled
-    assert len(hvn_labels) <= 5
+    solid_shapes = [s for s in shapes if s["line"]["dash"] == "solid"]
+    assert len(hvn_labels) == len(solid_shapes)
+    assert len(hvn_labels) <= 3
+
+
+def test_overlay_defaults_to_neutral_poc_vp_labels_without_delta():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    _, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20, current_price=110)
+    texts = [str(a.get("text", "")) for a in annotations]
+
+    assert any(text.startswith("POC ") for text in texts)
+    assert any(text.startswith("VP2 ") for text in texts)
+    assert any(text.startswith("VP3 ") for text in texts)
+    assert all("估算買壓" not in text and "估算賣壓" not in text for text in texts)
+
+
+def test_overlay_can_show_estimated_delta_when_enabled():
+    from src.ui.charts.volume_profile import build_delta_profile_overlay
+
+    _, annotations = build_delta_profile_overlay(_make_df(20), n_bins=20, current_price=110, show_delta=True)
+    texts = [str(a.get("text", "")) for a in annotations]
+
+    assert any("估算買壓" in text for text in texts)
+
+
+def test_relative_zone_labels_are_price_relative_not_pressure_claims():
+    from src.ui.charts.volume_profile import _relative_zone_label
+
+    assert _relative_zone_label(98, 100) == "下方成本區"
+    assert _relative_zone_label(100.5, 100) == "現價附近"
+    assert _relative_zone_label(102, 100) == "上方成交區"

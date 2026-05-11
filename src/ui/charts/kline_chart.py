@@ -10,9 +10,14 @@ import streamlit as _st_main
 
 from src.indicators.candlestick_patterns import detect_candlestick_patterns
 from src.indicators.ma_analysis import format_inline_label
+from src.ui.charts._ohlc_hover import build_ohlc_hover_script, build_ohlc_rows
 from src.ui.charts._y_axis_fit import build_post_script
 from src.ui.charts.volume_profile import build_delta_profile_overlay
 from src.ui.theme.plotly_template import apply_chart_theme, get_chart_palette
+
+_VOLUME_OVERLAY_AXIS = "yaxis99"
+_VOLUME_OVERLAY_TRACE_AXIS = "y99"
+_VOLUME_OVERLAY_HEIGHT_RATIO = 0.22
 
 
 @dataclass
@@ -87,6 +92,7 @@ def _main_traces(
         open=df["open"], high=df["high"], low=df["low"], close=df["close"],
         increasing_line_color=P.MORANDI_UP, decreasing_line_color=P.MORANDI_DOWN,
         name="K線", showlegend=False,
+        hoverinfo="none",
     ))
     for n in sorted(ma_periods):
         col = f"MA_{n}"
@@ -95,6 +101,7 @@ def _main_traces(
                 x=df["date"], y=df[col],
                 mode="lines", name=f"MA{n}",
                 line=dict(color=P.MA_COLORS.get(n, P.TEXT_SECONDARY), width=1.2),
+                hoverinfo="none",
             ))
     return traces
 
@@ -148,7 +155,33 @@ def _volume_bar_traces(df: pd.DataFrame) -> list[go.BaseTraceType]:
         marker_color=colors,
         name="成交量",
         showlegend=False,
+        hoverinfo="none",
     )]
+
+
+def _volume_overlay_trace(df: pd.DataFrame) -> go.BaseTraceType | None:
+    P = _get_palette()
+    if "volume" not in df.columns:
+        return None
+    volume = pd.to_numeric(df["volume"], errors="coerce")
+    if not volume.notna().any():
+        return None
+    open_col = pd.to_numeric(df.get("open", df["close"]), errors="coerce")
+    close_col = pd.to_numeric(df["close"], errors="coerce")
+    colors = [
+        P.MORANDI_UP if float(c) >= float(o) else P.MORANDI_DOWN
+        for c, o in zip(close_col.fillna(0), open_col.fillna(0))
+    ]
+    return go.Bar(
+        x=df["date"],
+        y=volume,
+        marker_color=colors,
+        opacity=0.28,
+        name="成交量",
+        yaxis=_VOLUME_OVERLAY_TRACE_AXIS,
+        showlegend=False,
+        hoverinfo="none",
+    )
 
 
 def _bias_traces(df: pd.DataFrame, period: int) -> list[go.BaseTraceType]:
@@ -240,6 +273,7 @@ def build_combined_chart(
     show_signals: bool = True,
     show_candlestick_patterns: bool = False,
     show_volume_profile: bool = False,
+    show_volume_profile_delta: bool = False,
     show_volume_bar: bool = False,
     ma_cross_events: list[dict] | None = None,
     granularity: str = "1d",
@@ -261,8 +295,7 @@ def build_combined_chart(
         panels.append("kd")
     if show_bias and f"bias_{bias_period}" in df.columns:
         panels.append("bias")
-    if show_volume_bar and "volume" in df.columns:
-        panels.append("volume")
+    show_volume_overlay = bool(show_volume_bar and "volume" in df.columns)
 
     n_rows = len(panels)
 
@@ -295,6 +328,9 @@ def build_combined_chart(
 
     for row_idx, panel in enumerate(panels, start=1):
         if panel == "main":
+            volume_trace = _volume_overlay_trace(df) if show_volume_overlay else None
+            if volume_trace is not None:
+                fig.add_trace(volume_trace)
             for trace in _main_traces(df, ticker, ma_periods):
                 fig.add_trace(trace, row=row_idx, col=1)
             if show_candlestick_patterns:
@@ -377,7 +413,12 @@ def build_combined_chart(
         )
 
     if show_volume_profile:
-        profile_shapes, profile_annotations = _volume_profile_overlay(df)
+        latest_close = _latest_close(df)
+        profile_shapes, profile_annotations = _volume_profile_overlay(
+            df,
+            current_price=latest_close,
+            show_delta=show_volume_profile_delta,
+        )
         if profile_shapes or profile_annotations:
             fig.update_layout(
                 shapes=list(fig.layout.shapes or []) + profile_shapes,
@@ -385,6 +426,22 @@ def build_combined_chart(
             )
 
     _apply_layout(fig)
+    if show_volume_profile:
+        _ensure_volume_profile_label_margin(fig, show_delta=show_volume_profile_delta)
+    if show_volume_overlay:
+        max_volume = pd.to_numeric(df["volume"], errors="coerce").max()
+        volume_range_hi = float(max_volume) / _VOLUME_OVERLAY_HEIGHT_RATIO if pd.notna(max_volume) and max_volume else 1
+        fig.update_layout(**{
+            _VOLUME_OVERLAY_AXIS: dict(
+                overlaying="y",
+                side="right",
+                range=[0, volume_range_hi],
+                showticklabels=False,
+                showgrid=False,
+                zeroline=False,
+                fixedrange=True,
+            )
+        })
     fig.update_layout(
         height=total_height,
         showlegend=True,
@@ -425,13 +482,49 @@ def build_combined_chart(
         fig.update_xaxes(range=[x_range_start, end_date], autorange=False)
 
     # Store panel layout metadata for render_combined_chart's JS builder
-    fig.update_layout(meta={"panels": panels, "bias_period": bias_period})
+    fig.update_layout(meta={
+        "panels": panels,
+        "bias_period": bias_period,
+        "ma_periods": sorted(ma_periods),
+        "volume_overlay_axis": _VOLUME_OVERLAY_AXIS if show_volume_overlay else "",
+    })
 
     return fig
 
 
-def _volume_profile_overlay(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
-    return build_delta_profile_overlay(df, n_days=60, n_bins=20)
+def _volume_profile_overlay(
+    df: pd.DataFrame,
+    *,
+    current_price: float | None = None,
+    show_delta: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    return build_delta_profile_overlay(
+        df,
+        n_days=60,
+        n_bins=20,
+        current_price=current_price,
+        show_delta=show_delta,
+    )
+
+
+def _latest_close(df: pd.DataFrame) -> float | None:
+    if df.empty or "close" not in df.columns:
+        return None
+    values = pd.to_numeric(df["close"], errors="coerce").dropna()
+    if values.empty:
+        return None
+    return float(values.iloc[-1])
+
+
+def _ensure_volume_profile_label_margin(fig: go.Figure, *, show_delta: bool) -> None:
+    current = fig.layout.margin
+    min_right = 230 if show_delta else 160
+    fig.update_layout(margin=dict(
+        l=current.l if current and current.l is not None else 55,
+        r=max(int(current.r or 0), min_right),
+        t=current.t if current and current.t is not None else 40,
+        b=current.b if current and current.b is not None else 10,
+    ))
 
 
 def render_combined_chart(
@@ -451,14 +544,23 @@ def render_combined_chart(
     dates = df["date"].astype(str).str[:10].tolist() if "date" in df.columns else []
     lows = _safe_numeric_list(df["low"]) if "low" in df.columns else []
     highs = _safe_numeric_list(df["high"]) if "high" in df.columns else []
+    volumes = _safe_numeric_list(df["volume"]) if "volume" in df.columns else []
     height = int(fig.layout.height or 700) + 20
 
     # Build sub-panel data from figure meta stored by build_combined_chart()
     meta = fig.layout.meta or {}
     panels: list[str] = list(meta.get("panels", ["main"])) if isinstance(meta, dict) else ["main"]
     bias_period: int = int(meta.get("bias_period", 20)) if isinstance(meta, dict) else 20
+    ma_periods: list[int] = [int(period) for period in meta.get("ma_periods", [])] if isinstance(meta, dict) else []
+    volume_overlay_axis = str(meta.get("volume_overlay_axis") or "") if isinstance(meta, dict) else ""
 
     sub_panels: list[dict] = []
+    if volume_overlay_axis and volumes:
+        sub_panels.append({
+            "type": "volume_overlay",
+            "axis": volume_overlay_axis,
+            "valueArrays": [volumes],
+        })
     for row_idx, panel in enumerate(panels, start=1):
         if panel in ("main", "kd"):
             continue
@@ -477,7 +579,23 @@ def render_combined_chart(
             if "volume" in df.columns:
                 sub_panels.append({"type": "volume", "axis": axis, "valueArrays": [_safe_numeric_list(df["volume"])]})
 
-    post_script = build_post_script(div_id, dates, lows, highs, sub_panels)
+    P = _get_palette()
+    post_script = (
+        build_post_script(div_id, dates, lows, highs, sub_panels)
+        + build_ohlc_hover_script(
+            div_id,
+            build_ohlc_rows(
+                df,
+                ma_periods=ma_periods,
+                ma_colors={period: P.MA_COLORS.get(period, P.TEXT_SECONDARY) for period in ma_periods},
+            ),
+            up_color=P.MORANDI_UP,
+            down_color=P.MORANDI_DOWN,
+            neutral_color=P.TEXT_SECONDARY,
+            background_color=P.BACKGROUND,
+            border_color=P.BORDER,
+        )
+    )
     html = fig.to_html(
         include_plotlyjs="cdn",
         full_html=False,
@@ -485,7 +603,7 @@ def render_combined_chart(
         config=config,
         post_script=post_script,
     )
-    _st_main.iframe(html, height=height)
+    _st_main.iframe(html, height=height + 36)
 
 
 # ── Standalone chart wrappers (for backtest_page and other callers) ──

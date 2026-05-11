@@ -60,4 +60,3 @@ def test_sentiment_panel_adds_metric_help_and_collapsed_glossary(monkeypatch):
     assert captured["expander"] == {"label": "ⓘ 如何解讀情緒分數？", "expanded": False}
     assert SCORE_GLOSSARY_MARKDOWN in captured["markdown"]
     assert "尚無可用情緒來源" in captured["caption"]
-

@@ -28,7 +28,7 @@ def build_post_script(
     sub_panels:
         List of dicts describing each non-price, non-KD panel:
             {
-              "type":        "macd" | "bias" | "volume",
+              "type":        "macd" | "bias" | "volume" | "volume_overlay",
               "axis":        "yaxis2" | "yaxis3" | ...,
               "valueArrays": [[v0, v1, ...], ...],  # one list per series
             }
@@ -125,6 +125,9 @@ def build_post_script(
       }} else if (t === "volume") {{
         lo = 0;
         hi = vMax * 1.1;
+      }} else if (t === "volume_overlay") {{
+        lo = 0;
+        hi = vMax / 0.22;
       }} else {{
         continue;
       }}

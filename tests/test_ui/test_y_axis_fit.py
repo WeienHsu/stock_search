@@ -163,6 +163,14 @@ def test_volume_starts_at_zero_in_js():
     assert "lo = 0" in out
 
 
+def test_volume_overlay_uses_bottom_band_in_js():
+    panels = [{"type": "volume_overlay", "axis": "yaxis99", "valueArrays": [[1000]]}]
+    out = build_post_script("d", DATES, LOWS, HIGHS, panels)
+
+    assert '"volume_overlay"' in out
+    assert "hi = vMax / 0.22;" in out
+
+
 # ── KD exclusion ─────────────────────────────────────────────────────────────
 
 def test_kd_not_in_output_when_excluded():

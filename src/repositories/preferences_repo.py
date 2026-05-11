@@ -10,6 +10,7 @@ _DEFAULTS: dict[str, Any] = {
     "show_kd": True,
     "show_bias": True,
     "show_news": True,
+    "show_volume_profile_delta": False,
     "bias_period": 20,
     "ma_periods": [5, 20, 60],
     "active_strategies": ["strategy_d"],
