@@ -6,9 +6,12 @@ from typing import Any
 
 from src.ai.digest_generator import run_digest
 from src.auth.auth_manager import list_users
+from src.core.market_calendar import is_trading_day
+from src.data.ticker_utils import normalize_ticker
 from src.notifications import send_notification
 from src.repositories import user_prefs_repo
 from src.repositories.scheduler_run_repo import finish_run, start_run
+from src.repositories.watchlist_repo import get_watchlist
 from src.scheduler import events as _events
 
 JOB_NAME = "daily_digest"
@@ -38,6 +41,9 @@ def run_daily_digest(user_id: str, digest_type: str) -> dict[str, Any]:
     today = str(date.today())
     if cache.get(digest_type, {}).get("date") == today:
         return {"skipped": True, "reason": "already_sent_today"}
+
+    if not _user_has_trading_target(user_id):
+        return {"skipped": True, "reason": "non_trading_day"}
 
     content, used_ai = run_digest(user_id, digest_type)
     subject = "盤前摘要" if digest_type == PRE_MARKET else "盤後摘要"
@@ -93,6 +99,18 @@ def _enabled_types(prefs: dict[str, Any]) -> set[str]:
     if prefs.get("post_market", False):
         enabled.add(POST_MARKET)
     return enabled
+
+
+def _user_has_trading_target(user_id: str) -> bool:
+    try:
+        items = get_watchlist(user_id)
+    except Exception:
+        items = []
+    tickers = [normalize_ticker(str(item.get("ticker", ""))) for item in items]
+    tickers = [ticker for ticker in tickers if ticker]
+    if not tickers:
+        return is_trading_day("2330.TW")
+    return any(is_trading_day(ticker) for ticker in tickers)
 
 
 if __name__ == "__main__":

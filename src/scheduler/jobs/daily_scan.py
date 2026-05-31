@@ -9,6 +9,7 @@ import src.strategies.strategy_d  # ensure registration
 import src.strategies.strategy_kd  # ensure registration
 
 from src.auth.auth_manager import list_users
+from src.core.market_calendar import is_trading_day
 from src.core.strategy_registry import list_strategies
 from src.notifications import send_notification
 from src.repositories.scheduler_run_repo import finish_run, start_run
@@ -24,6 +25,15 @@ def run_daily_scan() -> dict[str, Any]:
     users_checked = 0
     notifications_sent = 0
     try:
+        if not is_trading_day("2330.TW"):
+            finish_run(run_id, "success")
+            return {
+                "skipped": True,
+                "skipped_reason": "non_trading_day",
+                "users_checked": users_checked,
+                "notifications_sent": notifications_sent,
+            }
+
         strategies = list_strategies()
         strategy_id = strategies[0] if strategies else "strategy_d"
         for user in list_users():

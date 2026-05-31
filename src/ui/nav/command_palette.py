@@ -39,8 +39,9 @@ def render_command_palette(user_id: str) -> None:
     watchlist = _watchlist(user_id)
     defaults = _defaults()
     payload = _client_palette_payload(watchlist, defaults)
+    theme = st.session_state.get("theme", "morandi")
     st.html(
-        _command_palette_markup(payload),
+        _command_palette_markup(payload, theme),
         width="content",
     )
     st.html(
@@ -126,12 +127,20 @@ def _client_palette_payload(watchlist: list[dict[str, Any]], defaults: list[dict
     }
 
 
-def _command_palette_markup(payload: dict[str, Any]) -> str:
+def _command_palette_markup(payload: dict[str, Any], theme: str = "morandi") -> str:
     payload_json = escape(json.dumps(payload, ensure_ascii=False), quote=False)
     dashboard_key = escape(DASHBOARD, quote=True)
+    # Follow the app theme explicitly; leave the attribute off for "system" so the
+    # @media (prefers-color-scheme) fallback keeps tracking the OS.
+    if theme == "dark":
+        theme_attr = ' data-theme="dark"'
+    elif theme == "morandi":
+        theme_attr = ' data-theme="light"'
+    else:
+        theme_attr = ""
     return f"""
         <style>{_COMMAND_PALETTE_CSS}</style>
-        <div id="stock-search-command-palette" data-open="0" data-dashboard-key="{dashboard_key}">
+        <div id="stock-search-command-palette" data-open="0" data-dashboard-key="{dashboard_key}"{theme_attr}>
           <div class="sscp-panel" role="dialog" aria-modal="true" aria-label="Command Palette">
             <input class="sscp-input" aria-label="搜尋股票或頁面" placeholder="輸入股票代號、名稱或頁面，例如 tsmc、2330、settings" />
             <div class="sscp-results" role="listbox"></div>
@@ -208,11 +217,39 @@ def _command_palette_controller_script() -> str:
               });
             }
 
+            function findNavLink(pageKey) {
+              const links = Array.from(root.querySelectorAll('a[href]'));
+              return links.find(function(link) {
+                try {
+                  const url = new URL(link.getAttribute("href"), hostWindow.location.href);
+                  const parts = url.pathname.split("/").filter(Boolean);
+                  return parts.length && parts[parts.length - 1] === pageKey;
+                } catch (_) {
+                  return false;
+                }
+              }) || null;
+            }
+
             function navigate(pageKey, ticker) {
+              // Ticker jumps still need ?ticker=, which soft nav cannot carry, so use a full load.
+              if (ticker) {
+                const url = new URL(hostWindow.location.href);
+                url.searchParams.set("page", pageKey);
+                url.searchParams.set("ticker", ticker);
+                hostWindow.location.assign(url.toString());
+                return;
+              }
+              // Pure page nav: prefer Streamlit soft navigation to preserve session_state
+              // (e.g. scanner results); fall back to a full load if the nav link is missing.
+              const link = findNavLink(pageKey);
+              if (link) {
+                if (overlay.__sscpClose) overlay.__sscpClose();
+                link.click();
+                return;
+              }
               const url = new URL(hostWindow.location.href);
               url.searchParams.set("page", pageKey);
-              if (ticker) url.searchParams.set("ticker", ticker);
-              else url.searchParams.delete("ticker");
+              url.searchParams.delete("ticker");
               hostWindow.location.assign(url.toString());
             }
 
@@ -458,5 +495,58 @@ _COMMAND_PALETTE_CSS = """
   .sscp-empty {
     color: #9AA0B0;
   }
+}
+
+/* Explicit app-theme overrides (win over the prefers-color-scheme fallback). */
+#stock-search-command-palette[data-theme="dark"] .sscp-panel {
+  background: #252830;
+  color: #E8EAF0;
+  border-color: rgba(111, 120, 136, 0.55);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.52);
+}
+#stock-search-command-palette[data-theme="dark"] .sscp-input {
+  border-bottom-color: rgba(111, 120, 136, 0.45);
+}
+#stock-search-command-palette[data-theme="dark"] .sscp-input::placeholder {
+  color: #9AA0B0;
+}
+#stock-search-command-palette[data-theme="dark"] .sscp-title {
+  color: #9AA0B0;
+}
+#stock-search-command-palette[data-theme="dark"] .sscp-item:hover,
+#stock-search-command-palette[data-theme="dark"] .sscp-item[data-active="1"] {
+  background: #303642;
+}
+#stock-search-command-palette[data-theme="dark"] .sscp-desc {
+  color: #9AA0B0;
+}
+#stock-search-command-palette[data-theme="dark"] .sscp-empty {
+  color: #9AA0B0;
+}
+
+#stock-search-command-palette[data-theme="light"] .sscp-panel {
+  background: #F5F2EE;
+  color: #4A4540;
+  border-color: rgba(138, 126, 118, 0.38);
+  box-shadow: 0 24px 80px rgba(24, 20, 17, 0.28);
+}
+#stock-search-command-palette[data-theme="light"] .sscp-input {
+  border-bottom-color: rgba(138, 126, 118, 0.35);
+}
+#stock-search-command-palette[data-theme="light"] .sscp-input::placeholder {
+  color: #7C7672;
+}
+#stock-search-command-palette[data-theme="light"] .sscp-title {
+  color: #665F59;
+}
+#stock-search-command-palette[data-theme="light"] .sscp-item:hover,
+#stock-search-command-palette[data-theme="light"] .sscp-item[data-active="1"] {
+  background: #E5DFD7;
+}
+#stock-search-command-palette[data-theme="light"] .sscp-desc {
+  color: #665F59;
+}
+#stock-search-command-palette[data-theme="light"] .sscp-empty {
+  color: #665F59;
 }
 """

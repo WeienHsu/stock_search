@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.auth.auth_manager import list_users
+from src.core.market_calendar import is_trading_day
 from src.data.chip_fetcher import fetch_today
 from src.repositories.chip_snapshot_repo import save_chip_snapshot
 from src.repositories.scheduler_run_repo import finish_run, start_run
@@ -17,6 +18,15 @@ def run_chip_daily_snapshot() -> dict[str, Any]:
     tickers_written = 0
     seen: set[str] = set()
     try:
+        if not is_trading_day("2330.TW"):
+            finish_run(run_id, "success")
+            return {
+                "skipped": True,
+                "skipped_reason": "non_trading_day",
+                "users_checked": users_checked,
+                "tickers_written": tickers_written,
+            }
+
         for user in list_users():
             users_checked += 1
             for item in get_watchlist(user["user_id"]):

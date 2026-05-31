@@ -77,6 +77,7 @@ def test_build_weekly_digest_rows_prefers_event_log(monkeypatch):
 def test_run_weekly_digest_sends_notification_with_fallback_body(monkeypatch):
     sent = []
     finished = []
+    monkeypatch.setattr(weekly_digest, "is_trading_day", lambda ticker: True)
     monkeypatch.setattr(weekly_digest, "start_run", lambda job_name: "run-1")
     monkeypatch.setattr(
         weekly_digest,
@@ -99,7 +100,27 @@ def test_run_weekly_digest_sends_notification_with_fallback_body(monkeypatch):
 
     result = weekly_digest.run_weekly_digest()
 
-    assert result == {"users_checked": 1, "digests_sent": 1, "ai_generated": 0}
+    assert result == {"users_checked": 1, "users_skipped": 0, "digests_sent": 1, "ai_generated": 0}
     assert sent[0][1] == "每週投資組合週報"
     assert sent[0][3]["event_type"] == "weekly_digest"
     assert finished == [("run-1", "success", None)]
+
+
+def test_run_weekly_digest_skips_non_trading_watchlist(monkeypatch):
+    sent = []
+    monkeypatch.setattr(weekly_digest, "is_trading_day", lambda ticker: False)
+    monkeypatch.setattr(weekly_digest, "start_run", lambda job_name: "run-1")
+    monkeypatch.setattr(weekly_digest, "finish_run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(weekly_digest, "list_users", lambda: [{"user_id": "user-1"}])
+    monkeypatch.setattr(weekly_digest, "get_watchlist", lambda user_id: [{"ticker": "2330.TW", "name": "台積電"}])
+    monkeypatch.setattr(
+        weekly_digest,
+        "build_weekly_digest_rows",
+        lambda items, user_id=None: (_ for _ in ()).throw(AssertionError("no digest rows")),
+    )
+    monkeypatch.setattr(weekly_digest, "send_notification", lambda *args, **kwargs: sent.append(args))
+
+    result = weekly_digest.run_weekly_digest()
+
+    assert result == {"users_checked": 1, "users_skipped": 1, "digests_sent": 0, "ai_generated": 0}
+    assert sent == []

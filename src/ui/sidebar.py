@@ -6,7 +6,7 @@ import streamlit as st
 import src.strategies.strategy_d    # ensure registration
 import src.strategies.strategy_kd   # ensure registration
 from src.ui.components.sidebar_strategy_params import build_strategy_params, render_strategy_param_summary
-from src.ui.nav.page_keys import DASHBOARD, LABEL_BY_KEY, WORKSTATION
+from src.ui.nav.page_keys import DASHBOARD, LABEL_BY_KEY
 
 _SETTINGS_PATH = Path(__file__).parents[2] / "config" / "default_settings.json"
 
@@ -116,15 +116,9 @@ def render_sidebar(user_id: str) -> dict:
     nav_ticker = normalize_query_ticker()
     default_ticker = prefs.get("last_ticker", defaults["ui"]["default_ticker"])
     _sync_sidebar_ticker_state(st.session_state, default_ticker, nav_ticker)
-    ticker = st.sidebar.text_input(
-        "股票代號",
-        placeholder="e.g. 2330.TW / TSLA",
-        key="sidebar_ticker",
-    ).strip().upper()
-    if st.sidebar.button("開啟綜合看盤", width="stretch"):
-        st.session_state["_pending_nav_page"] = LABEL_BY_KEY[WORKSTATION]
-        st.session_state["_pending_ticker"] = ticker
-        st.rerun()
+    # The active ticker now lives purely in session_state, written by 快速搜尋 above and the
+    # Dashboard / 綜合看盤 inline ticker inputs. No sidebar widget renders it any more.
+    ticker = str(st.session_state.get("sidebar_ticker", default_ticker) or "").strip().upper()
 
     # ── Time period ──
     _avail_periods = defaults["ui"]["available_periods"]

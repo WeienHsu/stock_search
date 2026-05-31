@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from src.core.sorting import sort_watchlist_items
+from src.data.ticker_extractor import extract_tickers_from_csv, extract_tickers_from_text
 from src.data.ticker_utils import normalize_ticker
 from src.repositories.watchlist_repo import add_ticker, get_watchlist, remove_ticker
 
@@ -92,3 +93,44 @@ def _render_primary_watchlist_settings(user_id: str) -> None:
             add_ticker(user_id, normalize_ticker(new_ticker), new_name)
             st.rerun()
         st.warning("請輸入股票代碼")
+
+    st.markdown("#### 批次匯入")
+    pasted = st.text_area(
+        "貼上代碼",
+        placeholder="2330, 2317, TSLA",
+        key="primary_watchlist_import_text",
+        height=96,
+    )
+    uploaded = st.file_uploader(
+        "CSV 檔案",
+        type=["csv"],
+        key="primary_watchlist_import_csv",
+    )
+    if st.button("解析", key="primary_watchlist_import_parse"):
+        parsed = extract_tickers_from_text(pasted)
+        if uploaded is not None:
+            parsed.extend(extract_tickers_from_csv(uploaded.getvalue()))
+        st.session_state["primary_watchlist_import_preview"] = _dedupe_preview(parsed)
+
+    preview = st.session_state.get("primary_watchlist_import_preview", [])
+    if preview:
+        st.dataframe(preview, hide_index=True, width="stretch")
+        if st.button("一鍵匯入", key="primary_watchlist_import_apply"):
+            for row in preview:
+                add_ticker(user_id, row["ticker"], row.get("name", ""))
+            st.session_state.pop("primary_watchlist_import_preview", None)
+            st.rerun()
+    elif "primary_watchlist_import_preview" in st.session_state:
+        st.caption("未解析到可匯入的股票代碼")
+
+
+def _dedupe_preview(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    result: list[dict[str, str]] = []
+    for row in rows:
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        result.append({"ticker": ticker, "name": str(row.get("name") or "")})
+    return result

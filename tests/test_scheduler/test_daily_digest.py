@@ -87,6 +87,26 @@ def test_run_daily_digest_skips_if_already_sent_today(tmp_path, monkeypatch):
     assert result["reason"] == "already_sent_today"
 
 
+def test_run_daily_digest_skips_non_trading_day(tmp_path, monkeypatch):
+    import src.repositories.user_prefs_repo as _up
+    import src.scheduler.jobs.daily_digest as dd_mod
+    from src.repositories._backends.json_backend import JsonBackend
+    from src.repositories.user_prefs_repo import UserPreferencesRepository
+
+    backend = JsonBackend(base_dir=tmp_path)
+    repo = UserPreferencesRepository(backend)
+    repo.set("user-1", "digest_settings", {"enabled": True, "pre_market": True})
+    monkeypatch.setattr(_up, "_repo", repo)
+    monkeypatch.setattr(dd_mod, "get_watchlist", lambda user_id: [{"ticker": "2330.TW"}])
+    monkeypatch.setattr(dd_mod, "is_trading_day", lambda ticker: False)
+    monkeypatch.setattr(dd_mod, "run_digest", lambda uid, dtype: (_ for _ in ()).throw(AssertionError("no digest")))
+
+    result = run_daily_digest("user-1", PRE_MARKET)
+
+    assert result["skipped"] is True
+    assert result["reason"] == "non_trading_day"
+
+
 def test_run_daily_digest_sends_and_caches(tmp_path, monkeypatch):
     import src.repositories.user_prefs_repo as _up
     import src.scheduler.jobs.daily_digest as dd_mod
@@ -98,6 +118,7 @@ def test_run_daily_digest_sends_and_caches(tmp_path, monkeypatch):
     repo = UserPreferencesRepository(backend)
     repo.set("user-1", "digest_settings", {"enabled": True, "pre_market": True})
     monkeypatch.setattr(_up, "_repo", repo)
+    monkeypatch.setattr(dd_mod, "is_trading_day", lambda ticker: True)
 
     # Stub run_digest and send_notification
     monkeypatch.setattr(dd_mod, "run_digest", lambda uid, dtype: ("AI 摘要內容", True))
@@ -130,6 +151,7 @@ def test_run_daily_digest_fallback_still_caches_on_failed_delivery(tmp_path, mon
     repo = UserPreferencesRepository(backend)
     repo.set("user-1", "digest_settings", {"enabled": True, "pre_market": True})
     monkeypatch.setattr(_up, "_repo", repo)
+    monkeypatch.setattr(dd_mod, "is_trading_day", lambda ticker: True)
 
     monkeypatch.setattr(dd_mod, "run_digest", lambda uid, dtype: ("fallback 文字", False))
     monkeypatch.setattr(

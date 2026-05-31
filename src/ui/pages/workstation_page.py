@@ -24,11 +24,23 @@ from src.ui.utils.ticker_display import resolved_display_ticker, should_sync_dis
 
 
 def render(cfg: dict, user_id: str) -> None:
-    st.markdown("## 綜合看盤")
-
     default_ticker = str(cfg.get("ticker") or "2330.TW").upper()
     if "workstation_active_ticker" not in st.session_state:
         st.session_state["workstation_active_ticker"] = default_ticker
+
+    head_left, head_right = st.columns([3, 2], vertical_alignment="bottom")
+    with head_left:
+        st.markdown("## 綜合看盤")
+    with head_right:
+        entered = st.text_input(
+            "快速切換標的",
+            placeholder="股票代號（e.g. 2330.TW / TSLA）",
+            key="workstation_ticker_quick_switch",
+            label_visibility="collapsed",
+        ).strip().upper()
+    if entered and entered != str(st.session_state.get("workstation_active_ticker", "")).strip().upper():
+        st.session_state["workstation_active_ticker"] = entered
+        st.rerun()
 
     left, right = st.columns([1.2, 1], gap="medium")
 

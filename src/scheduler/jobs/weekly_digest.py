@@ -12,6 +12,7 @@ import src.strategies.strategy_kd  # ensure registration
 from src.ai.prompts.weekly_digest import generate_weekly_digest
 from src.ai.provider_chain import build_default_chain
 from src.auth.auth_manager import list_users
+from src.core.market_calendar import is_trading_day
 from src.core.strategy_registry import get as get_strategy
 from src.data.price_fetcher import fetch_prices_for_strategy
 from src.data.ticker_utils import normalize_ticker
@@ -26,6 +27,7 @@ JOB_NAME = "weekly_digest"
 def run_weekly_digest() -> dict[str, Any]:
     run_id = start_run(JOB_NAME)
     users_checked = 0
+    users_skipped = 0
     digests_sent = 0
     ai_generated = 0
     try:
@@ -34,6 +36,9 @@ def run_weekly_digest() -> dict[str, Any]:
             user_id = user["user_id"]
             items = get_watchlist(user_id)
             if not items:
+                continue
+            if not _has_trading_target(items):
+                users_skipped += 1
                 continue
 
             rows = build_weekly_digest_rows(items, user_id=user_id)
@@ -51,6 +56,7 @@ def run_weekly_digest() -> dict[str, Any]:
         finish_run(run_id, "success")
         return {
             "users_checked": users_checked,
+            "users_skipped": users_skipped,
             "digests_sent": digests_sent,
             "ai_generated": ai_generated,
         }
@@ -84,6 +90,14 @@ def build_weekly_digest_rows(
         except Exception as exc:
             rows.append(_error_row(ticker, name, str(exc)[:80]))
     return rows
+
+
+def _has_trading_target(items: list[dict[str, Any]]) -> bool:
+    tickers = [normalize_ticker(str(item.get("ticker", ""))) for item in items]
+    tickers = [ticker for ticker in tickers if ticker]
+    if not tickers:
+        return is_trading_day("2330.TW")
+    return any(is_trading_day(ticker) for ticker in tickers)
 
 
 def build_weekly_digest_body(user_id: str, rows: list[dict[str, Any]]) -> tuple[str, bool]:

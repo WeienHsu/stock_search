@@ -70,6 +70,21 @@
     {"ticker": "2317.TW",   "name": "鴻海"},
     {"ticker": "3037.TW",   "name": "欣興電子"},
     {"ticker": "2382.TW",   "name": "廣達電腦"},
-    {"ticker": "0050.TW",   "name": "元大台灣50"}
+    {"ticker": "0050.TW",   "name": "元大台灣50"},
+    {"ticker": "AMD",       "name": "AMD 超微半導體"},
+    {"ticker": "ARM",       "name": "ARM Holdings"},
+    {"ticker": "SNDK",      "name": "SanDisk 晟碟"},
+    {"ticker": "AA",        "name": "美國鋁業"},
+    {"ticker": "XLE",       "name": "SPDR 能源 ETF"},
+    {"ticker": "VT",        "name": "Vanguard 全球股市 ETF"},
+    {"ticker": "VTI",       "name": "Vanguard 整體美股 ETF"},
+    {"ticker": "6491.TW",   "name": "晶碩"},
+    {"ticker": "3081.TWO",  "name": "聯亞"},
+    {"ticker": "00713.TW",  "name": "元大台灣高息低波"},
+    {"ticker": "00919.TW",  "name": "群益台灣精選高息"},
+    {"ticker": "00922.TW",  "name": "國泰台灣領袖50"},
+    {"ticker": "00981A.TW", "name": "主動統一台股增長"},
+    {"ticker": "00991A.TW", "name": "主動復華未來50"},
+    {"ticker": "00980A.TW", "name": "主動野村臺灣優選"}
   ]
 }

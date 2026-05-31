@@ -1,19 +1,37 @@
 from __future__ import annotations
 
 import os
+import random
+import time
 from collections.abc import Iterable
 
 from src.ai.providers.anthropic import AnthropicProvider
-from src.ai.providers.base import AIMessage, AIProvider, AIProviderError, MissingAIProviderConfig
+from src.ai.providers.base import (
+    AIMessage,
+    AIProvider,
+    AIProviderError,
+    MissingAIProviderConfig,
+    RetriableAIProviderError,
+)
 from src.ai.providers.gemini import GeminiProvider
 from src.ai.providers.openai import OpenAIProvider
 
 
 class AIProviderChain:
-    def __init__(self, providers: Iterable[AIProvider]):
+    def __init__(
+        self,
+        providers: Iterable[AIProvider],
+        *,
+        max_attempts: int = 3,
+        base_delay_seconds: float = 0.5,
+        jitter_seconds: float = 0.1,
+    ):
         self.providers = list(providers)
         if not self.providers:
             raise MissingAIProviderConfig("No AI providers are configured")
+        self.max_attempts = max(1, int(max_attempts))
+        self.base_delay_seconds = max(0.0, float(base_delay_seconds))
+        self.jitter_seconds = max(0.0, float(jitter_seconds))
 
     def generate(
         self,
@@ -23,14 +41,28 @@ class AIProviderChain:
     ) -> str:
         errors: list[str] = []
         for provider in self.providers:
-            try:
-                text = provider.generate(messages, system=system, temperature=temperature).strip()
-                if text:
-                    return text
-                raise AIProviderError("empty response")
-            except Exception as exc:
-                errors.append(f"{provider.name}: {exc}")
+            for attempt in range(1, self.max_attempts + 1):
+                try:
+                    text = provider.generate(messages, system=system, temperature=temperature).strip()
+                    if text:
+                        return text
+                    raise AIProviderError("empty response")
+                except RetriableAIProviderError as exc:
+                    if attempt >= self.max_attempts:
+                        errors.append(f"{provider.name}: {exc}")
+                        break
+                    self._sleep_before_retry(attempt)
+                except Exception as exc:
+                    errors.append(f"{provider.name}: {exc}")
+                    break
         raise AIProviderError("All AI providers failed; " + " | ".join(errors))
+
+    def _sleep_before_retry(self, attempt: int) -> None:
+        delay = self.base_delay_seconds * (2 ** (attempt - 1))
+        if self.jitter_seconds:
+            delay += random.uniform(0, self.jitter_seconds)
+        if delay > 0:
+            time.sleep(delay)
 
 
 def build_default_chain(user_id: str | None = None) -> AIProviderChain:

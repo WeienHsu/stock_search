@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
+from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,7 @@ _TW_OPEN = time(9, 0)
 _TW_CLOSE = time(13, 30)
 _US_OPEN = time(9, 30)
 _US_CLOSE = time(16, 0)
+_CALENDAR_BY_MARKET: dict[Market, str] = {"TW": "XTAI", "US": "XNYS"}
 
 _MINUTE = 60
 _HOUR = 3600
@@ -30,12 +32,31 @@ def market_for_ticker(ticker: str) -> Market:
 
 def is_market_open(ticker: str, now: datetime | None = None) -> bool:
     local_now = _local_now(ticker, now)
-    if local_now.weekday() >= 5:
+    if not is_trading_day(ticker, local_now):
         return False
 
     open_time, close_time = _session_times(ticker)
     current_time = local_now.time()
     return open_time <= current_time <= close_time
+
+
+def is_trading_day(ticker: str, date: datetime | None = None) -> bool:
+    """Return whether the ticker's market has a regular trading session on date."""
+    local_now = _local_now(ticker, date)
+    if local_now.weekday() >= 5:
+        return False
+
+    calendar = _exchange_calendar(market_for_ticker(ticker))
+    if calendar is None:
+        return True
+
+    try:
+        import pandas as pd
+
+        session = pd.Timestamp(local_now.date())
+        return bool(calendar.is_session(session))
+    except Exception:
+        return True
 
 
 def seconds_until_next_market_open(ticker: str, now: datetime | None = None) -> int:
@@ -46,13 +67,13 @@ def seconds_until_next_market_open(ticker: str, now: datetime | None = None) -> 
     if local_now.weekday() >= 5 or local_now.time() > close_time:
         candidate_date += timedelta(days=1)
 
-    while candidate_date.weekday() >= 5:
+    while not is_trading_day(ticker, datetime.combine(candidate_date, open_time, tzinfo=local_now.tzinfo)):
         candidate_date += timedelta(days=1)
 
     candidate = datetime.combine(candidate_date, open_time, tzinfo=local_now.tzinfo)
     if candidate <= local_now:
         candidate += timedelta(days=1)
-        while candidate.weekday() >= 5:
+        while not is_trading_day(ticker, candidate):
             candidate += timedelta(days=1)
 
     return max(1, int((candidate - local_now).total_seconds()))
@@ -66,7 +87,7 @@ def last_market_close_dt(ticker: str, now: datetime | None = None) -> datetime:
     today_close = datetime.combine(candidate, close_time, tzinfo=local_now.tzinfo)
     if local_now < today_close:
         candidate -= timedelta(days=1)
-    while candidate.weekday() >= 5:
+    while not is_trading_day(ticker, datetime.combine(candidate, close_time, tzinfo=local_now.tzinfo)):
         candidate -= timedelta(days=1)
     return datetime.combine(candidate, close_time, tzinfo=local_now.tzinfo)
 
@@ -79,8 +100,9 @@ def cache_ttl_seconds(
     """
     Return the cache TTL for the requested data granularity.
 
-    Holiday calendars are intentionally not modeled in P0; weekends and regular
-    sessions cover the dynamic TTL behavior without adding external dependencies.
+    Exchange holiday calendars are best-effort: when exchange_calendars is
+    unavailable or cannot answer a date, the logic gracefully falls back to
+    weekend/session checks.
     """
     if granularity in {"quote", "intraday"}:
         if is_market_open(ticker, now):
@@ -119,3 +141,13 @@ def _session_times(ticker: str) -> tuple[time, time]:
     if market_for_ticker(ticker) == "TW":
         return _TW_OPEN, _TW_CLOSE
     return _US_OPEN, _US_CLOSE
+
+
+@lru_cache(maxsize=2)
+def _exchange_calendar(market: Market):
+    try:
+        import exchange_calendars as xcals
+
+        return xcals.get_calendar(_CALENDAR_BY_MARKET[market])
+    except Exception:
+        return None

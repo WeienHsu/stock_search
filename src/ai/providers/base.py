@@ -13,6 +13,10 @@ class AIProviderError(RuntimeError):
     pass
 
 
+class RetriableAIProviderError(AIProviderError):
+    pass
+
+
 class MissingAIProviderConfig(AIProviderError):
     pass
 

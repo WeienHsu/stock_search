@@ -64,13 +64,20 @@ def _layer_colors() -> dict[str, dict[str, str]]:
 def render(cfg: dict, user_id: str) -> None:
     ticker = normalize_ticker(cfg["ticker"])
 
+    # Inline ticker switcher, rendered before data load so an invalid ticker is
+    # still recoverable here without going back to the sidebar.
+    _render_inline_ticker_input()
+
     if not ticker:
-        st.info("請在左側輸入股票代號")
+        st.info("請在右上角輸入股票代號")
         return
 
     def _goto_workstation() -> None:
         st.session_state["_pending_nav_page"] = LABEL_BY_KEY[WORKSTATION]
         st.session_state["_pending_ticker"] = ticker
+        # Workstation seeds its active ticker only once; set it here so navigating
+        # from the Dashboard always lands on the same symbol.
+        st.session_state["workstation_active_ticker"] = ticker
         st.rerun()
 
     def _goto_market() -> None:
@@ -248,6 +255,21 @@ def render(cfg: dict, user_id: str) -> None:
         except Exception:
             st.info("跨來源情緒資料暫不可用")
         render_news_section(articles, sentiment, ticker=ticker, user_id=user_id)
+
+
+def _render_inline_ticker_input() -> None:
+    """Top-right ticker switcher; writes session_state['sidebar_ticker'] on change."""
+    _, col_input = st.columns([5, 2])
+    with col_input:
+        entered = st.text_input(
+            "切換標的",
+            placeholder="股票代號（e.g. 2330.TW / TSLA）",
+            key="dashboard_ticker_inline",
+            label_visibility="collapsed",
+        ).strip().upper()
+    if entered and entered != str(st.session_state.get("sidebar_ticker", "")).strip().upper():
+        st.session_state["sidebar_ticker"] = entered
+        st.rerun()
 
 
 def _render_dual_badge(today_buy: bool, today_sell: bool) -> None:

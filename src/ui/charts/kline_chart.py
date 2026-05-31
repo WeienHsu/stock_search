@@ -53,11 +53,18 @@ def _safe_numeric_list(series: pd.Series) -> list[float | None]:
 
 
 def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
-    """Return Plotly rangebreaks that skip weekends and market holidays."""
+    """Return Plotly rangebreaks that skip weekends, holidays, and overnight gaps.
+
+    For intraday data the timestamps carry an "HH:MM" component, so we also break
+    the non-trading window between one session's last bar and the next session's
+    open. Bounds are derived from the data itself (yfinance returns intraday
+    timestamps in UTC, which varies by market and DST), not from a fixed calendar.
+    """
     if df.empty or "date" not in df.columns:
         return []
     try:
-        dates = pd.to_datetime(df["date"].astype(str).str[:10])
+        raw = df["date"].astype(str)
+        dates = pd.to_datetime(raw.str[:10])
         min_d, max_d = dates.min(), dates.max()
         all_weekdays = pd.date_range(min_d, max_d, freq="B")  # business days Mon-Fri
         trading_set = set(dates.dt.strftime("%Y-%m-%d"))
@@ -65,6 +72,18 @@ def _build_rangebreaks(df: pd.DataFrame) -> list[dict]:
         breaks: list[dict] = [dict(bounds=["sat", "mon"])]
         if holidays:
             breaks.append(dict(values=holidays))
+
+        if raw.str.len().gt(10).any():
+            dt = pd.to_datetime(raw)
+            tod = dt.dt.hour + dt.dt.minute / 60.0
+            open_h = float(tod.min())
+            diffs = dt.sort_values().diff().dropna()
+            intrabar = diffs[diffs < pd.Timedelta(hours=12)]
+            bar_h = intrabar.median().total_seconds() / 3600.0 if not intrabar.empty else 1.0
+            close_h = min(24.0, float(tod.max()) + bar_h)
+            # Skip only when the session truly fills the day (nothing to break).
+            if open_h > 0.0 or close_h < 24.0:
+                breaks.append(dict(pattern="hour", bounds=[close_h, open_h]))
         return breaks
     except Exception:
         return []

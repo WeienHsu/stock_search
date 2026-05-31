@@ -3,6 +3,7 @@ from src.scheduler.jobs import chip_daily_snapshot
 
 def test_chip_daily_snapshot_dedupes_tickers(monkeypatch):
     saved = []
+    monkeypatch.setattr(chip_daily_snapshot, "is_trading_day", lambda ticker: True)
     monkeypatch.setattr(chip_daily_snapshot, "list_users", lambda: [{"user_id": "u1"}, {"user_id": "u2"}])
     monkeypatch.setattr(
         chip_daily_snapshot,
@@ -33,3 +34,17 @@ def test_chip_daily_snapshot_dedupes_tickers(monkeypatch):
 
     assert result["tickers_written"] == 2
     assert saved == ["2317.TW", "2330.TW"]
+
+
+def test_chip_daily_snapshot_skips_non_trading_day(monkeypatch):
+    monkeypatch.setattr(chip_daily_snapshot, "is_trading_day", lambda ticker: False)
+    monkeypatch.setattr(chip_daily_snapshot, "list_users", lambda: (_ for _ in ()).throw(AssertionError("no users")))
+    monkeypatch.setattr(chip_daily_snapshot, "fetch_today", lambda ticker: (_ for _ in ()).throw(AssertionError("no fetch")))
+    monkeypatch.setattr(chip_daily_snapshot, "start_run", lambda job_name: 1)
+    monkeypatch.setattr(chip_daily_snapshot, "finish_run", lambda *args, **kwargs: None)
+
+    result = chip_daily_snapshot.run_chip_daily_snapshot()
+
+    assert result["skipped"] is True
+    assert result["skipped_reason"] == "non_trading_day"
+    assert result["tickers_written"] == 0

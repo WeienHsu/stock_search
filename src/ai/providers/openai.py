@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-from src.ai.providers.base import AIMessage, AIProvider, AIProviderError, first_text, require_api_key
+from src.ai.providers.base import AIMessage, AIProvider, AIProviderError, RetriableAIProviderError, first_text, require_api_key
 
 
 @dataclass
@@ -52,6 +52,11 @@ def _post_json(url: str, payload: dict, headers: dict[str, str], provider_name: 
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise AIProviderError(f"{provider_name} API error {exc.code}: {detail[:300]}") from exc
+        message = f"{provider_name} API error {exc.code}: {detail[:300]}"
+        if exc.code == 429 or exc.code >= 500:
+            raise RetriableAIProviderError(message) from exc
+        raise AIProviderError(message) from exc
+    except TimeoutError as exc:
+        raise RetriableAIProviderError(f"{provider_name} request timed out: {exc}") from exc
     except Exception as exc:
         raise AIProviderError(f"{provider_name} request failed: {exc}") from exc
