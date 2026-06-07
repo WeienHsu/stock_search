@@ -1,17 +1,14 @@
-from __future__ import annotations
-
-import sqlite3
-import time
 from pathlib import Path
 from typing import Any
+import time
+from src.core.database import get_connection
 
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "alerts.db"
 
 
-def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+
+def _conn(db_path: Path = _DEFAULT_DB) -> Any:
+    conn = get_connection("scheduler", db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scheduler_runs (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,

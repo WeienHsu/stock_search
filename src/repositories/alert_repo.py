@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Literal
+
+from src.core.database import get_connection
 
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "alerts.db"
 
 AlertDirection = Literal["above", "below"]
 
 
-def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+def _conn(db_path: Path = _DEFAULT_DB) -> Any:
+    conn = get_connection("alerts", db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS alerts (
             id           TEXT PRIMARY KEY,
@@ -216,13 +215,13 @@ def alert_is_triggered(alert: dict[str, Any], current_price: float) -> bool:
     return False
 
 
-def _row_to_alert(row: sqlite3.Row) -> dict[str, Any]:
+def _row_to_alert(row: Any) -> dict[str, Any]:
     data = dict(row)
     data["enabled"] = bool(data["enabled"])
     return data
 
 
-def _row_to_event(row: sqlite3.Row) -> dict[str, Any]:
+def _row_to_event(row: Any) -> dict[str, Any]:
     data = dict(row)
     data["payload"] = json.loads(data.pop("payload_json"))
     return data
