@@ -4,9 +4,16 @@ import uuid
 import hashlib
 import secrets
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import bcrypt
+from src.core.database import get_connection
+
+try:
+    import psycopg2
+    DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg2.IntegrityError)
+except ImportError:
+    DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
 
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "auth.db"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -21,9 +28,8 @@ class AuthResult(dict):
         return super().__eq__(other)
 
 
-def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+def _conn(db_path: Path = _DEFAULT_DB) -> Any:
+    conn = get_connection("auth", db_path)
 
     # Create users table (is_admin included for fresh DBs)
     conn.execute("""
@@ -72,7 +78,7 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _is_registration_enabled_conn(conn: sqlite3.Connection) -> bool:
+def _is_registration_enabled_conn(conn: Any) -> bool:
     row = conn.execute(
         "SELECT value FROM app_settings WHERE key = 'registration_enabled'"
     ).fetchone()
@@ -102,7 +108,7 @@ def register_user(
                 "INSERT INTO users (user_id, username, pw_hash, created_at, is_admin) VALUES (?,?,?,?,?)",
                 (user_id, username.strip(), pw_hash, time.time(), 1 if is_first else 0),
             )
-        except sqlite3.IntegrityError:
+        except DB_INTEGRITY_ERRORS:
             raise ValueError("用戶名已存在")
 
     return user_id

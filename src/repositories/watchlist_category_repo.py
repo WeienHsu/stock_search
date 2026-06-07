@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import sqlite3
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+from src.core.database import get_connection
 from src.repositories.watchlist_repo import add_ticker as add_watchlist_ticker
 from src.repositories.watchlist_repo import get_watchlist
 
@@ -54,10 +54,8 @@ DEFAULT_CATEGORIES: list[tuple[str, list[tuple[str, str]]]] = [
 ]
 
 
-def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+def _conn(db_path: Path = _DEFAULT_DB) -> Any:
+    conn = get_connection("watchlist_categories", db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS watchlist_categories (
             id         TEXT PRIMARY KEY,

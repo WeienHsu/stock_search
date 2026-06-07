@@ -1,19 +1,15 @@
-from __future__ import annotations
-
 import json
-import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from src.core.database import get_connection
 
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "source_health.db"
 
 
-def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+def _conn(db_path: Path = _DEFAULT_DB) -> Any:
+    conn = get_connection("source_health", db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS source_health (
             source_id       TEXT PRIMARY KEY,

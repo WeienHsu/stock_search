@@ -1,18 +1,14 @@
-from __future__ import annotations
-
 import json
-import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+from src.core.database import get_connection
 
 _DEFAULT_DB = Path(__file__).parents[2] / "data" / "strategy_scan_events.db"
 
 
-def _conn(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+def _conn(db_path: Path = _DEFAULT_DB) -> Any:
+    conn = get_connection("strategy_scan_events", db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS strategy_scan_events (
             user_id      TEXT NOT NULL,
@@ -125,7 +121,7 @@ def list_scan_events(
     return [_row_to_dict(row) for row in rows]
 
 
-def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+def _row_to_dict(row: Any) -> dict[str, Any]:
     item = dict(row)
     try:
         item["payload"] = json.loads(str(item.get("payload_json") or "{}"))

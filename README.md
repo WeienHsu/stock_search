@@ -65,6 +65,16 @@ ENABLE_STREAMLIT_SCHEDULER=1 streamlit run app.py
 
 長期使用建議用獨立 worker 或 Docker Compose。
 
+## 資料庫 Migration（Postgres / Supabase）
+
+`STORAGE_BACKEND=postgres` 時，`migrations/*.sql` 內的 SQL migration 透過下列腳本套用（依檔名排序，已套用的會自動跳過，記錄於 `schema_migrations` 表）：
+
+```bash
+python scripts/apply_migrations.py
+```
+
+需先在 `.env` 設定 `DATABASE_URL`。例如 `enable_rls.sql` 會對 `public` schema 下所有表啟用 RLS（Row Level Security）。
+
 ## Docker 常駐啟動
 
 ```bash
@@ -190,9 +200,3 @@ docker run --rm -v stock_search_stock_data:/data -v "$PWD":/backup alpine \
 docker run --rm -v stock_search_stock_data:/data -v "$PWD":/backup alpine \
   sh -c "cd /data && tar xzf /backup/stock_data_backup.tgz"
 ```
-
-## 重要文件
-
-- `docs/improved_Plan_20260502.md`：分 phase 改進計畫與完成紀錄。
-- `docs/data_source_mapping_P0_5.md`：TWSE / TPEX / TAIFEX / CNN / MMFI 資料源驗證結果。
-- `docs/docker_deployment.md`：Docker 常駐部署細節。

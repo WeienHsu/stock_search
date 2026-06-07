@@ -40,10 +40,14 @@ env/
 PLAN.md
 AGENTS.md
 CLAUDE.md
+GEMINI.md
 .antigravitycli
 
 # ── NLTK downloaded data (if stored locally) ──
 nltk_data/
+
+# ── Local symlink to personal Obsidian vault (machine-specific) ──
+kanban_task
 
 # ── Editor / IDE ──
 .vscode/
