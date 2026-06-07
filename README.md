@@ -75,6 +75,14 @@ python scripts/apply_migrations.py
 
 需先在 `.env` 設定 `DATABASE_URL`。例如 `enable_rls.sql` 會對 `public` schema 下所有表啟用 RLS（Row Level Security）。
 
+> **執行順序（重要）**：App 的資料表是第一次連線時用 `CREATE TABLE IF NOT EXISTS` 自動建立的，而 `enable_rls.sql` 只對「執行當下已存在」的表啟用 RLS。若在全新空 DB 上先跑 migration 再啟動 App，RLS 會套不到任何表，且 `schema_migrations` 已記為已套用、之後不會重跑。正確順序為：
+>
+> 1. 設定 `.env`（`STORAGE_BACKEND=postgres`、`DATABASE_URL`）
+> 2. 先啟動一次 App（`streamlit run app.py`）讓資料表被建立
+> 3. 再執行 `python scripts/apply_migrations.py` 套用 RLS
+>
+> 註：App 以具 `BYPASSRLS` 的 Supabase `postgres` role 直連，RLS 開啟與否不影響 App 功能，僅作為 anon key／外部直連的安全防護。
+
 ## Docker 常駐啟動
 
 ```bash
