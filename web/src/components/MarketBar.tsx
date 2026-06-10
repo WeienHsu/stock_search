@@ -26,9 +26,13 @@ function Item({ label, snap }: { label: string; snap?: IndexSnapshot }) {
 export function MarketBar({
   updown,
   onToggleUpdown,
+  theme,
+  onToggleTheme,
 }: {
   updown: "tw" | "us";
   onToggleUpdown: () => void;
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
 }) {
   const { data } = usePoll(() => api.market(), 120_000);
   const [now, setNow] = useState(new Date());
@@ -66,6 +70,9 @@ export function MarketBar({
       <div className="spacer" />
       <button className="ghost" onClick={onToggleUpdown} title="切換紅漲綠跌 / 綠漲紅跌">
         {updown === "tw" ? "紅漲綠跌" : "綠漲紅跌"}
+      </button>
+      <button className="ghost" onClick={onToggleTheme} title="切換深色 / 淺色主題">
+        {theme === "dark" ? "☀️ 淺色" : "🌙 深色"}
       </button>
       <span className="clock num">
         {now.toLocaleTimeString("zh-TW", { hour12: false })}

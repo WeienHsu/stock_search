@@ -10,7 +10,11 @@ from src.data.index_fetcher import (
     index_snapshot,
 )
 from src.data.market_sentiment_fetcher import fetch_cnn_fear_greed
-from src.data.twse_fetcher import fetch_institutional_flow
+from src.data.twse_fetcher import (
+    fetch_institutional_flow,
+    fetch_margin_summary,
+    fetch_valuation_summary,
+)
 
 router = APIRouter(tags=["market"])
 
@@ -37,6 +41,8 @@ def market_overview() -> dict:
         "breadth": _safe(get_taiex_realtime_breadth),
         "fear_greed": _safe(fetch_cnn_fear_greed),
         "institutional": _safe(_institutional_rows) or [],
+        "margin": _safe(fetch_margin_summary),
+        "valuation": _safe(fetch_valuation_summary),
     }
 
 

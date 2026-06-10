@@ -26,11 +26,17 @@ const MA_COLORS: Record<string, string> = {
   "60": "#34d399",
 };
 
+const CHART_THEMES = {
+  dark: { text: "#7d8696", grid: "rgba(125, 134, 150, 0.08)", separator: "#1f2633" },
+  light: { text: "#5d6878", grid: "rgba(93, 104, 120, 0.14)", separator: "#d9dee7" },
+} as const;
+
 interface Props {
   data: KlineResponse | null;
   alerts: Alert[];
   upColor: string;
   downColor: string;
+  theme: "dark" | "light";
   alertMode: boolean;
   onAlertPrice: (price: number) => void;
 }
@@ -56,7 +62,7 @@ function toTime(value: string): Time {
   return value as Time;
 }
 
-export function KlineChart({ data, alerts, upColor, downColor, alertMode, onAlertPrice }: Props) {
+export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode, onAlertPrice }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Refs | null>(null);
   const [legend, setLegend] = useState("");
@@ -69,18 +75,17 @@ export function KlineChart({ data, alerts, upColor, downColor, alertMode, onAler
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const style = getComputedStyle(document.documentElement);
     const chart = createChart(container, {
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: style.getPropertyValue("--text-dim").trim() || "#7d8696",
+        textColor: CHART_THEMES.dark.text,
         fontSize: 11,
-        panes: { separatorColor: style.getPropertyValue("--border").trim() || "#1f2633" },
+        panes: { separatorColor: CHART_THEMES.dark.separator },
       },
       grid: {
-        vertLines: { color: "rgba(125, 134, 150, 0.08)" },
-        horzLines: { color: "rgba(125, 134, 150, 0.08)" },
+        vertLines: { color: CHART_THEMES.dark.grid },
+        horzLines: { color: CHART_THEMES.dark.grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
       timeScale: { borderVisible: false, rightOffset: 4 },
@@ -165,6 +170,20 @@ export function KlineChart({ data, alerts, upColor, downColor, alertMode, onAler
       refs.current = null;
     };
   }, []);
+
+  // Follow app theme
+  useEffect(() => {
+    const r = refs.current;
+    if (!r) return;
+    const colors = CHART_THEMES[theme];
+    r.chart.applyOptions({
+      layout: { textColor: colors.text, panes: { separatorColor: colors.separator } },
+      grid: {
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
+      },
+    });
+  }, [theme]);
 
   // Push data + colors
   useEffect(() => {

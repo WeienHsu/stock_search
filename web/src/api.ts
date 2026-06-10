@@ -1,6 +1,7 @@
 import type {
   Alert,
   AlertEvent,
+  ChipResponse,
   InboxMessage,
   KlineResponse,
   MarketOverview,
@@ -56,6 +57,7 @@ export const api = {
   alertEvents: (limit = 30) => request<AlertEvent[]>(`/api/alerts/events?limit=${limit}`),
   scan: (strategyId: string) => request<ScanRow[]>(`/api/scan?strategy_id=${strategyId}`),
   market: () => request<MarketOverview>("/api/market"),
+  chip: (symbol: string) => request<ChipResponse>(`/api/chip/${encodeURIComponent(symbol)}`),
   inbox: () => request<{ messages: InboxMessage[]; unread: number }>("/api/inbox"),
   markRead: (id: string) =>
     request<{ ok: boolean }>(`/api/inbox/${id}/read`, { method: "POST" }),

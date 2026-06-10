@@ -18,7 +18,7 @@ import src.strategies.strategy_d  # noqa: F401
 import src.strategies.strategy_kd  # noqa: F401
 import src.strategies.bias_strategy  # noqa: F401
 
-from server.routes import alerts, inbox, kline, market, quotes, scan, watchlist
+from server.routes import alerts, chip, inbox, kline, market, quotes, scan, watchlist
 
 app = FastAPI(title="Stock Intelligence API", version="1.0.0")
 
@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for router in (quotes.router, kline.router, watchlist.router, alerts.router, scan.router, market.router, inbox.router):
+for router in (quotes.router, kline.router, watchlist.router, alerts.router, scan.router, market.router, inbox.router, chip.router):
     app.include_router(router, prefix="/api")
 
 

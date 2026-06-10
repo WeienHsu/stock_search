@@ -9,6 +9,11 @@ import { SymbolHeader } from "./components/SymbolHeader";
 import { Watchlist } from "./components/Watchlist";
 import type { KlineResponse, Quote, WatchlistItem } from "./types";
 
+const UPDOWN_COLORS = {
+  tw: { up: "#f23645", down: "#089981" },
+  us: { up: "#089981", down: "#f23645" },
+} as const;
+
 export default function App() {
   const [updown, setUpdown] = useState<"tw" | "us">(
     () => (localStorage.getItem("updown") as "tw" | "us") || "tw",
@@ -17,6 +22,14 @@ export default function App() {
     document.documentElement.dataset.updown = updown;
     localStorage.setItem("updown", updown);
   }, [updown]);
+
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (localStorage.getItem("theme") as "dark" | "light") || "dark",
+  );
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [symbol, setSymbol] = useState("");
@@ -86,13 +99,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const style = getComputedStyle(document.documentElement);
-  const upColor = style.getPropertyValue("--up").trim() || "#f23645";
-  const downColor = style.getPropertyValue("--down").trim() || "#089981";
+  const { up: upColor, down: downColor } = UPDOWN_COLORS[updown];
 
   return (
     <div className="app">
-      <MarketBar updown={updown} onToggleUpdown={() => setUpdown(updown === "tw" ? "us" : "tw")} />
+      <MarketBar
+        updown={updown}
+        onToggleUpdown={() => setUpdown(updown === "tw" ? "us" : "tw")}
+        theme={theme}
+        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+      />
       <Watchlist
         items={items}
         quotes={quotes}
@@ -125,6 +141,7 @@ export default function App() {
           alerts={symbolAlerts}
           upColor={upColor}
           downColor={downColor}
+          theme={theme}
           alertMode={alertMode}
           onAlertPrice={(price) => {
             setPendingPrice(price);

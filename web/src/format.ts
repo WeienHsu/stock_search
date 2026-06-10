@@ -22,6 +22,13 @@ export function fmtVolume(v: number | null | undefined): string {
   return String(Math.round(v));
 }
 
+export function fmtLots(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  const sign = v > 0 ? "+" : "";
+  if (Math.abs(v) >= 10000) return `${sign}${(v / 10000).toFixed(1)}萬`;
+  return `${sign}${Math.round(v).toLocaleString("en-US")}`;
+}
+
 export function fmtTime(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleString("zh-TW", {
     month: "2-digit",

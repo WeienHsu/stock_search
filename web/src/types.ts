@@ -97,7 +97,38 @@ export interface MarketOverview {
     ratio?: number;
   } | null;
   fear_greed: { score?: number; rating?: string } | null;
-  institutional: Record<string, unknown>[];
+  institutional: {
+    date: string;
+    foreign_net_lots: number | null;
+    investment_trust_net_lots: number | null;
+  }[];
+  margin: { margin_balance?: number; short_balance?: number } | null;
+  valuation: { median_pe?: number; average_pe?: number; date?: string } | null;
+}
+
+export interface ChipResponse {
+  supported: boolean;
+  ticker: string;
+  qfiis_pct?: number | null;
+  summary?: {
+    foreign_5d_lots?: number;
+    investment_trust_5d_lots?: number;
+    dealer_5d_lots?: number;
+    margin_change_lots?: number;
+    margin_change_pct?: number;
+    margin_trend?: string;
+  };
+  institutional?: {
+    date: string;
+    foreign_net_lots: number | null;
+    investment_trust_net_lots: number | null;
+    dealer_net_lots: number | null;
+  }[];
+  margin?: {
+    date: string;
+    margin_balance: number | null;
+    short_balance: number | null;
+  }[];
 }
 
 export interface InboxMessage {

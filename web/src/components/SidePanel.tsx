@@ -2,6 +2,8 @@ import { useState } from "react";
 import { api } from "../api";
 import { usePoll } from "../usePoll";
 import { fmtPrice, fmtTime } from "../format";
+import { ChipPanel } from "./ChipPanel";
+import { MarketSummary } from "./MarketSummary";
 import type { Alert, Quote } from "../types";
 
 interface Props {
@@ -16,7 +18,7 @@ interface Props {
 }
 
 export function SidePanel(props: Props) {
-  const [tab, setTab] = useState<"alerts" | "inbox">("alerts");
+  const [tab, setTab] = useState<"alerts" | "chip" | "market" | "inbox">("alerts");
   const { data: inboxData, refresh: refreshInbox } = usePoll(() => api.inbox(), 60_000);
   const unread = inboxData?.unread ?? 0;
 
@@ -24,16 +26,23 @@ export function SidePanel(props: Props) {
     <aside className="side">
       <div className="side-tabs">
         <button className={tab === "alerts" ? "active" : ""} onClick={() => setTab("alerts")}>
-          到價警示
+          警示
+        </button>
+        <button className={tab === "chip" ? "active" : ""} onClick={() => setTab("chip")}>
+          籌碼
+        </button>
+        <button className={tab === "market" ? "active" : ""} onClick={() => setTab("market")}>
+          大盤
         </button>
         <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>
-          通知中心{unread > 0 ? ` (${unread})` : ""}
+          通知{unread > 0 ? ` (${unread})` : ""}
         </button>
       </div>
       <div className="side-body">
-        {tab === "alerts" ? (
-          <AlertsTab {...props} />
-        ) : (
+        {tab === "alerts" && <AlertsTab {...props} />}
+        {tab === "chip" && <ChipPanel symbol={props.symbol} />}
+        {tab === "market" && <MarketSummary />}
+        {tab === "inbox" && (
           <InboxTab
             messages={inboxData?.messages ?? []}
             onRead={(id) => api.markRead(id).then(refreshInbox)}

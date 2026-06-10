@@ -12,6 +12,17 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
+:root[data-theme="light"] {
+  --bg: #e9edf3;
+  --panel: #ffffff;
+  --panel-2: #f1f4f8;
+  --border: #d9dee7;
+  --text: #1c2330;
+  --text-dim: #5d6878;
+  --text-faint: #9aa3b2;
+  --warn: #b45309;
+}
+
 /* TW convention (default): red = up, green = down */
 :root[data-updown="tw"] {
   --up: #f23645;
@@ -574,6 +585,61 @@ select:focus {
 ::-webkit-scrollbar-thumb {
   background: #2a3342;
   border-radius: 4px;
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #c3cad6;
+}
+
+/* ── Chip / market detail panels ── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.stat-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+
+.stat-card .label {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.stat-card .value {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.mini-table th {
+  color: var(--text-dim);
+  font-weight: 500;
+  text-align: right;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mini-table td {
+  text-align: right;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mini-table th:first-child,
+.mini-table td:first-child {
+  text-align: left;
 }
 
 ::-webkit-scrollbar-track {
