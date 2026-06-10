@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.auth.auth_manager import list_users
+from src.core.local_user import list_users
 from src.core.market_calendar import is_trading_day
 from src.data.chip_fetcher import fetch_today
 from src.repositories.chip_snapshot_repo import save_chip_snapshot

@@ -1,14 +1,22 @@
+import os
+
+# Force sqlite before any src import: server.main calls load_dotenv(), and a
+# developer .env may point STORAGE_BACKEND at a real Postgres instance.
+# load_dotenv never overrides variables that are already set.
+os.environ["STORAGE_BACKEND"] = "sqlite"
+
 import pandas as pd
 import numpy as np
 import pytest
-import streamlit as st
+
+from src.core.ttl_cache import clear_all_ttl_caches
 
 
 @pytest.fixture(autouse=True)
-def clear_streamlit_cache():
-    st.cache_data.clear()
+def _clear_ttl_caches():
+    clear_all_ttl_caches()
     yield
-    st.cache_data.clear()
+    clear_all_ttl_caches()
 
 
 @pytest.fixture

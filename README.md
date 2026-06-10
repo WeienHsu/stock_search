@@ -1,210 +1,93 @@
-# Stock Intelligence
+# Stock Intelligence — 台美股監測終端
 
-Streamlit + Python 的個人股票分析工具，支援台股 / 美股 ticker 分析、策略訊號、回測、風控、自選清單、新聞情緒、價格警示與常駐排程。
+追蹤台股 / 美股的個人投資監測工具：**React 專業終端介面 + FastAPI + Python 分析核心**，
+支援即時報價、K 線與技術指標、策略買賣訊號、到價警示與常駐自動化監測。
 
-## 目前功能
+```
+web/     React 19 + TypeScript + Vite + lightweight-charts（終端 UI）
+server/  FastAPI 薄 API 層（/api/*）
+src/     Python 核心：資料抓取、指標、策略、掃描、警示、排程、通知
+```
 
-- Dashboard：K 線、MA、KD、MACD、Bias、策略買賣訊號、新聞情緒。
-- Market Overview：TAIEX/GTSM、USD/TWD、法人買賣超、TAIFEX 外資期貨未平倉、CNN Fear & Greed、MMFI、台股估值與融資融券。
-- Scanner：掃描自選清單，顯示買進 / 賣出訊號狀態。
-- Backtest：策略回測、勝率、Sharpe、最大回撤等指標。
-- Risk：ATR 停損與部位控管。
-- Alerts：價格警示 CRUD、Inbox fallback、排程執行紀錄。
-- Notifications：Email SMTP、Telegram Bot、Inbox fallback。
-- Scheduler：APScheduler worker，支援價格警示、每日策略掃描、週報 placeholder。
-- Cache：依市場交易時段調整價格 / 新聞快取 TTL。
-- Docker：`app` + `worker` 雙服務常駐，資料持久化保存。
+## 功能
+
+- **即時報價**：台股走 TWSE MIS API（盤中即時）、美股走 yfinance；自選清單跳動閃色。
+- **K 線終端**：lightweight-charts 多 pane（K 線 + MA5/10/20/60 + 量、MACD、KD），
+  策略買賣訊號 marker、十字線 OHLC、紅漲綠跌 / 綠漲紅跌切換。
+- **到價警示**：表單或「圖表點價」建立，警示線直接畫在圖上；worker 常駐監測，
+  觸發後寫入事件並透過 Email / Telegram / LINE / 站內通知送達。
+- **策略掃描**：對整個自選清單跑策略（Strategy D / KD / Bias），
+  顯示買賣訊號狀態、趨勢、多頭排列分數、支撐區。
+- **大盤狀態列**：加權指數、S&P 500、NASDAQ、USD/TWD、CNN Fear & Greed、委買賣比。
+- **自動化排程**（worker）：盤中價格警示、台美股每日策略掃描通知、台股籌碼快照。
+- **回測引擎**：策略勝率 / Sharpe / 最大回撤（`src/backtest`，目前為程式庫層）。
 
 ## 環境設定
-
-建立 `.env`：
 
 ```bash
 cp .env.example .env
 ```
 
-產生加密用 key，填入 `.env` 的 `APP_SECRET_KEY`：
+產生加密用 key 填入 `APP_SECRET_KEY`（保存通知憑證用，請固定保存）：
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-最小 `.env` 範例：
+最小 `.env`：
 
 ```env
-FINNHUB_API_KEY=your_key_here
 STORAGE_BACKEND=sqlite
-FINNHUB_KEY_MODE=global
 APP_SECRET_KEY=your_generated_fernet_key
-ENABLE_STREAMLIT_SCHEDULER=0
 ```
 
-`APP_SECRET_KEY` 請固定保存；更換後會無法解密已儲存的 API key、SMTP password、Telegram token。
-
-## 本機開發啟動
+## 本機開發
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+# 1. 後端
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
-```
+uvicorn server.main:app --reload --port 8700
 
-若要本機常駐排程，另開一個 terminal：
+# 2. 前端（另開 terminal）
+cd web && npm install && npm run dev   # http://localhost:5173
 
-```bash
-source .venv/bin/activate
+# 3. 常駐排程 worker（另開 terminal，警示／每日掃描需要）
 python -m src.scheduler.worker
 ```
 
-單 process 測試也可使用：
+API 文件：<http://127.0.0.1:8700/docs>（FastAPI 自動生成）。
 
-```bash
-ENABLE_STREAMLIT_SCHEDULER=1 streamlit run app.py
-```
-
-長期使用建議用獨立 worker 或 Docker Compose。
-
-## 資料庫 Migration（Postgres / Supabase）
-
-`STORAGE_BACKEND=postgres` 時，`migrations/*.sql` 內的 SQL migration 透過下列腳本套用（依檔名排序，已套用的會自動跳過，記錄於 `schema_migrations` 表）：
-
-```bash
-python scripts/apply_migrations.py
-```
-
-需先在 `.env` 設定 `DATABASE_URL`。例如 `enable_rls.sql` 會對 `public` schema 下所有表啟用 RLS（Row Level Security）。
-
-> **執行順序（重要）**：App 的資料表是第一次連線時用 `CREATE TABLE IF NOT EXISTS` 自動建立的，而 `enable_rls.sql` 只對「執行當下已存在」的表啟用 RLS。若在全新空 DB 上先跑 migration 再啟動 App，RLS 會套不到任何表，且 `schema_migrations` 已記為已套用、之後不會重跑。正確順序為：
->
-> 1. 設定 `.env`（`STORAGE_BACKEND=postgres`、`DATABASE_URL`）
-> 2. 先啟動一次 App（`streamlit run app.py`）讓資料表被建立
-> 3. 再執行 `python scripts/apply_migrations.py` 套用 RLS
->
-> 註：App 以具 `BYPASSRLS` 的 Supabase `postgres` role 直連，RLS 開啟與否不影響 App 功能，僅作為 anon key／外部直連的安全防護。
-
-## Docker 常駐啟動
+## 正式部署（Docker）
 
 ```bash
 docker compose up -d --build
 ```
 
-開啟：
+- `api`：uvicorn 同時服務 `/api/*` 與打包後的前端（<http://localhost:8700>）。
+- `worker`：APScheduler 常駐排程（價格警示每 15 分鐘、每日掃描台股 14:10 / 美股 05:10、
+  籌碼快照 17:30）。
 
-```text
-http://localhost:8501
-```
+## 資料庫 Migration（Postgres / Supabase）
 
-查看狀態：
-
-```bash
-docker compose ps
-docker compose logs -f worker
-```
-
-手動觸發一次價格警示掃描：
+`STORAGE_BACKEND=postgres` 時，`migrations/*.sql` 透過下列腳本套用
+（依檔名排序，已套用的自動跳過，記錄於 `schema_migrations` 表）：
 
 ```bash
-docker compose exec worker python -c "from src.scheduler.jobs.price_alerts import run_price_alerts; print(run_price_alerts())"
+python scripts/apply_migrations.py
 ```
 
-Docker Compose 會建立：
-
-- `app`：Streamlit UI
-- `worker`：APScheduler 常駐排程
-- `stock_data` volume：保存 `/app/data` 內所有 DB、使用者設定、警示、cache
-
-## Email 通知設定
-
-進入 App 的「設定」→「通知設定」。
-
-Gmail 範例：
-
-```text
-啟用 Email: 勾選
-收件 Email: 你的收件信箱
-SMTP host: smtp.gmail.com
-SMTP port: 587
-SMTP username: 你的完整 Gmail
-TLS: 勾選
-SMTP password / app password: Gmail App Password
-價格警示通道: email, inbox
-```
-
-儲存後按「傳送測試通知」。若 Email 或 Telegram 失敗，系統仍會寫入「警示」頁的 Inbox。
-
-## Telegram 通知設定
-
-進入「設定」→「通知設定」：
-
-```text
-啟用 Telegram: 勾選
-Telegram chat_id: 你的 chat id
-Telegram bot token: BotFather 產生的 token
-價格警示通道: telegram, inbox
-```
-
-儲存後可用「傳送測試通知」驗證。
-
-## 價格警示驗證
-
-1. 進入「警示」頁。
-2. 新增一筆容易觸發的警示，例如 `TSLA >= 1`。
-3. 手動執行：
-
-```bash
-python -c "from src.scheduler.jobs.price_alerts import run_price_alerts; print(run_price_alerts())"
-```
-
-Docker 模式：
-
-```bash
-docker compose exec worker python -c "from src.scheduler.jobs.price_alerts import run_price_alerts; print(run_price_alerts())"
-```
-
-4. 回到「警示」頁確認：
-
-- alert 顯示已觸發
-- Inbox 有訊息
-- 排程紀錄有 `price_alerts`
+> **執行順序**：資料表是第一次連線時 `CREATE TABLE IF NOT EXISTS` 自動建立的，
+> `enable_rls.sql` 只對執行當下已存在的表啟用 RLS。請先啟動 App 讓資料表建立，
+> 再執行 migration。
 
 ## 測試
 
 ```bash
-pytest -q
+pytest -q          # Python（API、指標、策略、排程、repo）
+cd web && npm run build   # TypeScript 型別檢查 + 打包
 ```
 
-本機提交前建議安裝 pre-commit hooks：
+## 架構說明
 
-```bash
-pre-commit install
-pre-commit run --all-files
-```
-
-目前 hooks 會檢查 YAML、檔尾換行、尾端空白，並執行 `python scripts/check_contrast.py` 驗證 UI token 對比度。
-
-目前主要測試涵蓋：
-
-- 指標與策略
-- 回測與風控
-- cache TTL
-- 資料源 probe parser
-- alert / inbox / scheduler repos
-- notification fallback
-- price alert job
-
-## 資料備份
-
-Docker volume 備份：
-
-```bash
-docker run --rm -v stock_search_stock_data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/stock_data_backup.tgz -C /data .
-```
-
-還原：
-
-```bash
-docker run --rm -v stock_search_stock_data:/data -v "$PWD":/backup alpine \
-  sh -c "cd /data && tar xzf /backup/stock_data_backup.tgz"
-```
+詳見 `docs/refactor_evaluation_20260611.md`（評估與重構決策，本機文件）。

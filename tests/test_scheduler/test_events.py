@@ -233,14 +233,12 @@ def test_register_job_handlers_subscribes_to_correct_events(monkeypatch):
     monkeypatch.setattr("src.scheduler.jobs.price_alerts.run_price_alerts", lambda: None)
     monkeypatch.setattr("src.scheduler.jobs.daily_scan.run_daily_scan", lambda: None)
     monkeypatch.setattr("src.scheduler.jobs.chip_daily_snapshot.run_chip_daily_snapshot", lambda: None)
-    monkeypatch.setattr("src.scheduler.jobs.weekly_digest.run_weekly_digest", lambda: None)
 
     sched_mod._register_job_handlers()
 
     assert fresh_bus.subscriber_count(PRICE_TICK) == 1
     assert fresh_bus.subscriber_count(SCHEDULE_DAILY) == 1
     assert fresh_bus.subscriber_count(SCHEDULE_CHIP_SNAPSHOT) == 1
-    assert fresh_bus.subscriber_count(SCHEDULE_WEEKLY) == 1
 
 
 def test_emit_schedule_event_calls_job_function(monkeypatch):
@@ -255,7 +253,6 @@ def test_emit_schedule_event_calls_job_function(monkeypatch):
     monkeypatch.setattr("src.scheduler.jobs.price_alerts.run_price_alerts", lambda: called.append("price_alerts"))
     monkeypatch.setattr("src.scheduler.jobs.daily_scan.run_daily_scan", lambda: called.append("daily_scan"))
     monkeypatch.setattr("src.scheduler.jobs.chip_daily_snapshot.run_chip_daily_snapshot", lambda: None)
-    monkeypatch.setattr("src.scheduler.jobs.weekly_digest.run_weekly_digest", lambda: None)
 
     sched_mod._register_job_handlers()
     fresh_bus.emit(Event(name=PRICE_TICK))
@@ -276,7 +273,6 @@ def test_register_job_handlers_is_idempotent(monkeypatch):
     monkeypatch.setattr("src.scheduler.jobs.price_alerts.run_price_alerts", lambda: None)
     monkeypatch.setattr("src.scheduler.jobs.daily_scan.run_daily_scan", lambda: None)
     monkeypatch.setattr("src.scheduler.jobs.chip_daily_snapshot.run_chip_daily_snapshot", lambda: None)
-    monkeypatch.setattr("src.scheduler.jobs.weekly_digest.run_weekly_digest", lambda: None)
 
     sched_mod._register_job_handlers()
     sched_mod._register_job_handlers()  # second call must be a no-op

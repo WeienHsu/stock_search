@@ -8,7 +8,7 @@ import pandas as pd
 import src.strategies.strategy_d  # ensure registration
 import src.strategies.strategy_kd  # ensure registration
 
-from src.auth.auth_manager import list_users
+from src.core.local_user import list_users
 from src.core.market_calendar import is_trading_day
 from src.core.strategy_registry import list_strategies
 from src.notifications import send_notification

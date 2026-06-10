@@ -1,21 +1,18 @@
 services:
-  app:
+  api:
     build: .
     image: stock-intelligence:latest
     container_name: stock_intelligence
     restart: unless-stopped
     ports:
-      - "8501:8501"
+      - "8700:8700"
     env_file:
       - .env
-    environment:
-      # The long-running worker service owns scheduled jobs in compose mode.
-      ENABLE_STREAMLIT_SCHEDULER: "0"
     volumes:
-      # One shared runtime volume keeps auth.db, users.db, alerts.db, settings, and caches together.
+      # One shared runtime volume keeps alerts.db, users.db, and caches together.
       - stock_data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8700/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -31,7 +28,7 @@ services:
     env_file:
       - .env
     depends_on:
-      app:
+      api:
         condition: service_healthy
     volumes:
       - stock_data:/app/data

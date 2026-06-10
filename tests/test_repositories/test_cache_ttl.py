@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.repositories import news_cache_repo, price_cache_repo
+from src.repositories import price_cache_repo
 
 
 class FakeBackend:
@@ -46,18 +46,6 @@ def test_price_cache_falls_back_to_default_ttl(monkeypatch):
     price_cache_repo.get_price_cache("TSLA_1y")
 
     assert backend.ttl_seconds == 6 * 3600
-
-
-def test_news_cache_uses_ttl_override(monkeypatch):
-    backend = FakeBackend()
-    articles = [{"headline": "test"}]
-    backend.saved[("global", "TSLA")] = articles
-    monkeypatch.setattr(news_cache_repo, "_backend", backend)
-
-    result = news_cache_repo.get_news_cache("TSLA", ttl_override=300)
-
-    assert result == articles
-    assert backend.ttl_seconds == 300
 
 
 def test_price_cache_clear_delegates_to_backend(monkeypatch):
