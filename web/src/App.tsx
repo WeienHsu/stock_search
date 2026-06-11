@@ -31,6 +31,11 @@ export default function App() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+  const [scannerH, setScannerH] = useState(
+    () => Number(localStorage.getItem("scanner-h")) || 230,
+  );
+  useEffect(() => localStorage.setItem("scanner-h", String(scannerH)), [scannerH]);
+
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [symbol, setSymbol] = useState("");
   const [interval, setInterval_] = useState("1d");
@@ -102,7 +107,7 @@ export default function App() {
   const { up: upColor, down: downColor } = UPDOWN_COLORS[updown];
 
   return (
-    <div className="app">
+    <div className="app" style={{ gridTemplateRows: `42px 1fr ${scannerH}px` }}>
       <MarketBar
         updown={updown}
         onToggleUpdown={() => setUpdown(updown === "tw" ? "us" : "tw")}
@@ -159,7 +164,7 @@ export default function App() {
         pendingPrice={pendingPrice}
         clearPendingPrice={() => setPendingPrice(null)}
       />
-      <ScannerTable strategyId={strategyId} onSelect={setSymbol} />
+      <ScannerTable strategyId={strategyId} onSelect={setSymbol} onHeightChange={setScannerH} />
     </div>
   );
 }

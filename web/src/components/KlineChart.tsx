@@ -231,15 +231,21 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
     r.d.setData(line(data.indicators.kd.d));
 
     const byDate = new Map(data.candles.map((c) => [c.time.slice(0, 10), c]));
-    const markerList: SeriesMarker<Time>[] = data.signals
-      .filter((s) => byDate.has(s.date) && s.type !== "neutral")
-      .map((s) => ({
+    const visible = data.signals.filter((s) => byDate.has(s.date) && s.type !== "neutral");
+    const lastBuy = visible.filter((s) => s.type === "buy").map((s) => s.date).sort().at(-1);
+    const lastSell = visible.filter((s) => s.type === "sell").map((s) => s.date).sort().at(-1);
+    // Latest signal of each type is emphasized; history stays small and quiet.
+    const markerList: SeriesMarker<Time>[] = visible.map((s) => {
+      const isLatest = s.date === (s.type === "buy" ? lastBuy : lastSell);
+      return {
         time: toTime(byDate.get(s.date)!.time),
         position: s.type === "buy" ? "belowBar" : "aboveBar",
         shape: s.type === "buy" ? "arrowUp" : "arrowDown",
         color: s.type === "buy" ? upColor : downColor,
-        text: s.type === "buy" ? "B" : "S",
-      }));
+        text: isLatest ? (s.type === "buy" ? "買" : "賣") : undefined,
+        size: isLatest ? 2 : 1,
+      };
+    });
     r.markers.setMarkers(markerList);
     r.chart.timeScale().fitContent();
   }, [data, upColor, downColor]);
@@ -288,11 +294,30 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
     return () => r.chart.unsubscribeCrosshairMove(handler);
   }, [data]);
 
+  const signalDates = (type: "buy" | "sell") =>
+    (data?.signals ?? [])
+      .filter((s) => s.type === type)
+      .map((s) => s.date)
+      .sort()
+      .at(-1);
+  const lastBuyDate = signalDates("buy");
+  const lastSellDate = signalDates("sell");
+
   return (
     <div className="chart-host">
       <div className="chart-hint">
         {alertMode ? "點擊圖表價位以建立到價警示（Esc 取消）" : legend}
       </div>
+      {(lastBuyDate || lastSellDate) && (
+        <div className="chart-badges">
+          {lastBuyDate && (
+            <span style={{ color: upColor }}>▲ 最近買進 {lastBuyDate.slice(5)}</span>
+          )}
+          {lastSellDate && (
+            <span style={{ color: downColor }}>▼ 最近賣出 {lastSellDate.slice(5)}</span>
+          )}
+        </div>
+      )}
       <div ref={containerRef} className="lw-container" style={alertMode ? { cursor: "crosshair" } : undefined} />
     </div>
   );

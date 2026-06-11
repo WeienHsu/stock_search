@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Quote, WatchlistItem } from "../types";
 import { fmtPct, fmtPrice, trendClass } from "../format";
+
+type MarketFilter = "all" | "tw" | "us";
+
+const isTW = (ticker: string) => /\.(TW|TWO)$/.test(ticker);
 
 interface Props {
   items: WatchlistItem[];
@@ -44,7 +48,19 @@ function Row({
       onDoubleClick={onRemove}
       title="雙擊移除"
     >
-      <span className="ticker">{item.ticker}</span>
+      <span className="ticker">
+        {item.ticker}
+        <button
+          className="ghost del"
+          title="移除"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          ✕
+        </button>
+      </span>
       <span className={`price num ${trendClass(quote?.change_pct)}`}>
         {fmtPrice(quote?.price)}
       </span>
@@ -59,6 +75,22 @@ function Row({
 export function Watchlist({ items, quotes, selected, onSelect, onAdd, onRemove }: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<MarketFilter>(
+    () => (localStorage.getItem("wl-filter") as MarketFilter) || "all",
+  );
+  useEffect(() => localStorage.setItem("wl-filter", filter), [filter]);
+
+  // Never mix markets: in "all" mode render TW and US as separate groups.
+  const groups = useMemo(() => {
+    const tw = items.filter((i) => isTW(i.ticker));
+    const us = items.filter((i) => !isTW(i.ticker));
+    if (filter === "tw") return [{ label: "台股", rows: tw }];
+    if (filter === "us") return [{ label: "美股", rows: us }];
+    return [
+      { label: "台股", rows: tw },
+      { label: "美股", rows: us },
+    ].filter((g) => g.rows.length > 0);
+  }, [items, filter]);
 
   const submit = async () => {
     const ticker = input.trim().toUpperCase();
@@ -86,18 +118,42 @@ export function Watchlist({ items, quotes, selected, onSelect, onAdd, onRemove }
           ＋
         </button>
       </div>
-      <div className="wl-rows">
-        {items.map((item) => (
-          <Row
-            key={item.ticker}
-            item={item}
-            quote={quotes[item.ticker]}
-            selected={item.ticker === selected}
-            onSelect={() => onSelect(item.ticker)}
-            onRemove={() => onRemove(item.ticker)}
-          />
+      <div className="wl-filter">
+        {(
+          [
+            ["all", "全部"],
+            ["tw", "台股"],
+            ["us", "美股"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            className={filter === key ? "active" : ""}
+            onClick={() => setFilter(key)}
+          >
+            {label}
+          </button>
         ))}
-        {items.length === 0 && <div className="empty-note">尚無自選股，輸入代號加入</div>}
+      </div>
+      <div className="wl-rows">
+        {groups.map((group) => (
+          <div key={group.label}>
+            <div className="wl-group">{group.label}</div>
+            {group.rows.map((item) => (
+              <Row
+                key={item.ticker}
+                item={item}
+                quote={quotes[item.ticker]}
+                selected={item.ticker === selected}
+                onSelect={() => onSelect(item.ticker)}
+                onRemove={() => onRemove(item.ticker)}
+              />
+            ))}
+          </div>
+        ))}
+        {groups.every((g) => g.rows.length === 0) && (
+          <div className="empty-note">尚無自選股，輸入代號加入</div>
+        )}
       </div>
     </aside>
   );
