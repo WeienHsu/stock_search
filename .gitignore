@@ -58,3 +58,6 @@ kanban_task
 # ── Documentation / Plans ──
 docs/
 PLAN.md
+
+# ── understand-anything tool local data ──
+.understand-anything/
