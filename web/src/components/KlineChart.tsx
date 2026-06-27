@@ -31,6 +31,12 @@ const CHART_THEMES = {
   light: { text: "#5d6878", grid: "rgba(93, 104, 120, 0.14)", separator: "#d9dee7" },
 } as const;
 
+// Latest buy/sell markers use accent colors independent of the up/down palette:
+// the up color is red in 紅漲綠跌 mode, which makes a red belowBar buy arrow blend
+// into the red price line and volume bars. Blue/orange stay visible everywhere.
+const LATEST_BUY = "#2979ff";
+const LATEST_SELL = "#ff6d00";
+
 interface Props {
   data: KlineResponse | null;
   alerts: Alert[];
@@ -231,17 +237,38 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
     r.d.setData(line(data.indicators.kd.d));
 
     const byDate = new Map(data.candles.map((c) => [c.time.slice(0, 10), c]));
-    const visible = data.signals.filter((s) => byDate.has(s.date) && s.type !== "neutral");
-    const lastBuy = visible.filter((s) => s.type === "buy").map((s) => s.date).sort().at(-1);
-    const lastSell = visible.filter((s) => s.type === "sell").map((s) => s.date).sort().at(-1);
+    const indexByDate = new Map(data.candles.map((c, i) => [c.time.slice(0, 10), i]));
+    const visible = data.signals
+      .filter((s) => byDate.has(s.date) && s.type !== "neutral")
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+    // Collapse runs of the same signal on consecutive bars into the latest one.
+    // lightweight-charts drops markers when adjacent-bar markers cluster (even
+    // out-of-view clusters), which was hiding the most recent buy/sell arrow once
+    // the chart was zoomed in.
+    const collapsed = visible.filter((s, i) => {
+      const next = visible[i + 1];
+      return !(
+        next &&
+        next.type === s.type &&
+        (indexByDate.get(next.date) ?? 0) - (indexByDate.get(s.date) ?? 0) <= 1
+      );
+    });
+    const lastBuy = collapsed.filter((s) => s.type === "buy").map((s) => s.date).sort().at(-1);
+    const lastSell = collapsed.filter((s) => s.type === "sell").map((s) => s.date).sort().at(-1);
     // Latest signal of each type is emphasized; history stays small and quiet.
-    const markerList: SeriesMarker<Time>[] = visible.map((s) => {
+    const markerList: SeriesMarker<Time>[] = collapsed.map((s) => {
       const isLatest = s.date === (s.type === "buy" ? lastBuy : lastSell);
       return {
         time: toTime(byDate.get(s.date)!.time),
         position: s.type === "buy" ? "belowBar" : "aboveBar",
         shape: s.type === "buy" ? "arrowUp" : "arrowDown",
-        color: s.type === "buy" ? upColor : downColor,
+        color: isLatest
+          ? s.type === "buy"
+            ? LATEST_BUY
+            : LATEST_SELL
+          : s.type === "buy"
+            ? upColor
+            : downColor,
         text: isLatest ? (s.type === "buy" ? "買" : "賣") : undefined,
         size: isLatest ? 2 : 1,
       };
@@ -311,10 +338,10 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
       {(lastBuyDate || lastSellDate) && (
         <div className="chart-badges">
           {lastBuyDate && (
-            <span style={{ color: upColor }}>▲ 最近買進 {lastBuyDate.slice(5)}</span>
+            <span style={{ color: LATEST_BUY }}>▲ 最近買進 {lastBuyDate.slice(5)}</span>
           )}
           {lastSellDate && (
-            <span style={{ color: downColor }}>▼ 最近賣出 {lastSellDate.slice(5)}</span>
+            <span style={{ color: LATEST_SELL }}>▼ 最近賣出 {lastSellDate.slice(5)}</span>
           )}
         </div>
       )}
