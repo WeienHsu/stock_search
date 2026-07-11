@@ -1,8 +1,13 @@
 import { fmtChange, fmtPct, fmtPrice, fmtVolume, trendClass } from "../format";
-import type { Quote, StrategyInfo } from "../types";
+import type { Quote, SignalMode, StrategyInfo } from "../types";
 
 const INTERVALS = ["1d", "60m", "15m", "5m"] as const;
 const PERIODS = ["1M", "3M", "6M", "1Y", "3Y", "5Y"] as const;
+const SIGNAL_MODES: { value: SignalMode; label: string }[] = [
+  { value: "confirmed", label: "原始" },
+  { value: "early", label: "早期" },
+  { value: "both", label: "兩者" },
+];
 
 interface Props {
   symbol: string;
@@ -14,6 +19,10 @@ interface Props {
   strategyId: string;
   setStrategyId: (v: string) => void;
   strategies: StrategyInfo[];
+  signalMode: SignalMode;
+  setSignalMode: (v: SignalMode) => void;
+  showBias: boolean;
+  setShowBias: (v: boolean) => void;
 }
 
 export function SymbolHeader({
@@ -26,6 +35,10 @@ export function SymbolHeader({
   strategyId,
   setStrategyId,
   strategies,
+  signalMode,
+  setSignalMode,
+  showBias,
+  setShowBias,
 }: Props) {
   const cls = trendClass(quote?.change_pct);
   return (
@@ -62,6 +75,24 @@ export function SymbolHeader({
             </option>
           ))}
         </select>
+        <span className="signal-mode" title="買賣箭頭：原始(確認) / 早期(背離) / 兩者並陳">
+          {SIGNAL_MODES.map((m) => (
+            <button
+              key={m.value}
+              className={signalMode === m.value ? "active" : ""}
+              onClick={() => setSignalMode(m.value)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </span>
+        <button
+          className={showBias ? "active" : ""}
+          onClick={() => setShowBias(!showBias)}
+          title="顯示/隱藏 乖離率(離 MA20) 副圖；買訊深負乖離 = 較強的底"
+        >
+          乖離
+        </button>
       </div>
     </div>
   );

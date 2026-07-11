@@ -10,6 +10,7 @@ class Signal:
     signal_type: str        # "buy" | "sell" | "neutral"
     strategy_id: str
     strength: float = 1.0   # 0.0–1.0
+    tier: str = "confirmed"  # "confirmed" | "early"
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

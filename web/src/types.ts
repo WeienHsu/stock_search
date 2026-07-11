@@ -35,8 +35,15 @@ export interface KlineResponse {
       hist: (number | null)[];
     };
   };
-  signals: { date: string; type: "buy" | "sell" | "neutral"; strength: number }[];
+  signals: {
+    date: string;
+    type: "buy" | "sell" | "neutral";
+    strength: number;
+    tier?: "confirmed" | "early";
+  }[];
 }
+
+export type SignalMode = "confirmed" | "early" | "both";
 
 export interface WatchlistItem {
   ticker: string;

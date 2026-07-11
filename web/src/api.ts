@@ -26,9 +26,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   quotes: (symbols: string[]) =>
     request<Quote[]>(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`),
-  kline: (symbol: string, interval: string, period: string, strategyId: string) =>
+  kline: (symbol: string, interval: string, period: string, strategyId: string, enableEarly = false) =>
     request<KlineResponse>(
-      `/api/kline/${encodeURIComponent(symbol)}?interval=${interval}&period=${period}&strategy_id=${strategyId}`,
+      `/api/kline/${encodeURIComponent(symbol)}?interval=${interval}&period=${period}&strategy_id=${strategyId}&enable_early=${enableEarly}`,
     ),
   strategies: () => request<StrategyInfo[]>("/api/strategies"),
   watchlist: () => request<WatchlistItem[]>("/api/watchlist"),

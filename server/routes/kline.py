@@ -31,6 +31,7 @@ def kline(
     interval: str = "1d",
     period: str = "1Y",
     strategy_id: str = "strategy_d",
+    enable_early: bool = False,
 ) -> dict:
     ticker = normalize_ticker(symbol)
     df = fetch_prices_by_interval(ticker, interval, period)
@@ -51,9 +52,10 @@ def kline(
     if interval == "1d":
         try:
             strategy = get_strategy(strategy_id)
-            raw = strategy.compute(df, strategy.default_params())
+            params = {**strategy.default_params(), "enable_early_signal": enable_early}
+            raw = strategy.compute(df, params)
             signals = [
-                {"date": s.date[:10], "type": s.signal_type, "strength": s.strength}
+                {"date": s.date[:10], "type": s.signal_type, "strength": s.strength, "tier": s.tier}
                 for s in raw
             ]
         except Exception:

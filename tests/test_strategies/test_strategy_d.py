@@ -11,6 +11,7 @@ from src.strategies.strategy_d import (
     detect_strategy_d, scan_strategy_d,
     detect_strategy_d_sell, scan_strategy_d_sell,
     diagnose_strategy_d, StrategyD,
+    scan_divergence_buy, scan_divergence_sell,
 )
 
 
@@ -183,6 +184,78 @@ def test_strategy_d_compute_uses_independent_buy_sell_params(monkeypatch):
     assert captured["sell"]["kd_window"] == 7
     assert captured["sell"]["n_bars"] == 8
     assert captured["sell"]["kd_d_threshold"] == 85
+
+
+# ── Early signal: MACD divergence tests ───────────────────────────────────────
+
+def _dates(n: int) -> list[str]:
+    return pd.date_range("2025-01-01", periods=n, freq="B").strftime("%Y-%m-%d").tolist()
+
+
+def test_scan_divergence_buy_detects_constructed_case():
+    # price swing lows at i=3 (low 14) and i=10 (low 12): lower low,
+    # histogram higher low (-2.0 -> -0.5, both negative) -> bullish divergence.
+    low = [20, 18, 16, 14, 16, 18, 17, 16, 15, 14, 12, 14, 16, 18]
+    hist = [-1.0] * 14
+    hist[3], hist[10] = -2.0, -0.5
+    df = pd.DataFrame({
+        "date": _dates(14),
+        "low": low,
+        "close": low,
+        "histogram": hist,
+    })
+    out = scan_divergence_buy(df, pivot_order=2)
+    assert len(out) == 1
+    # emitted at confirmation bar = second pivot (idx 10) + pivot_order (2) = idx 12
+    assert out.iloc[0]["date"] == _dates(14)[12]
+    assert out.iloc[0]["pivot_date"] == _dates(14)[10]
+
+
+def test_scan_divergence_sell_detects_constructed_case():
+    high = [10, 12, 14, 16, 14, 12, 13, 14, 15, 16, 18, 16, 14, 12]
+    hist = [1.0] * 14
+    hist[3], hist[10] = 2.0, 0.5  # higher price high, lower histogram high
+    df = pd.DataFrame({
+        "date": _dates(14),
+        "high": high,
+        "close": high,
+        "histogram": hist,
+    })
+    out = scan_divergence_sell(df, pivot_order=2)
+    assert len(out) == 1
+    assert out.iloc[0]["pivot_date"] == _dates(14)[10]
+
+
+def test_divergence_raises_without_columns():
+    df = pd.DataFrame({"close": [1, 2, 3]})
+    with pytest.raises(ValueError, match="Missing required columns"):
+        scan_divergence_buy(df)
+
+
+def test_early_signal_off_by_default():
+    df = _make_df(200, seed=3)
+    signals = StrategyD().compute(df, StrategyD().default_params())
+    assert all(s.tier == "confirmed" for s in signals)
+
+
+def test_enable_early_tags_tier(monkeypatch):
+    monkeypatch.setattr("src.strategies.strategy_d.prepare_df", lambda df, params: df)
+    monkeypatch.setattr("src.strategies.strategy_d.scan_strategy_d", lambda df, **k: pd.DataFrame())
+    monkeypatch.setattr("src.strategies.strategy_d.scan_strategy_d_sell", lambda df, **k: pd.DataFrame())
+    monkeypatch.setattr(
+        "src.strategies.strategy_d.scan_divergence_buy",
+        lambda df, *a: pd.DataFrame({"date": ["2025-01-03"], "pivot_date": ["2025-01-01"], "close": [10.0]}),
+    )
+    monkeypatch.setattr("src.strategies.strategy_d.scan_divergence_sell", lambda df, *a: pd.DataFrame())
+
+    signals = StrategyD().compute(
+        pd.DataFrame({"date": ["2025-01-01"], "close": [100.0]}),
+        {"enable_early_signal": True},
+    )
+    early = [s for s in signals if s.tier == "early"]
+    assert len(early) == 1
+    assert early[0].signal_type == "buy"
+    assert early[0].metadata["pivot_date"] == "2025-01-01"
 
 
 def test_strategy_d_compute_keeps_legacy_flat_param_fallback(monkeypatch):

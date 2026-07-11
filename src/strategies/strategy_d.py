@@ -301,6 +301,99 @@ def scan_strategy_d_sell(
     return df[signal][cols].reset_index(drop=True)
 
 
+# ── Early signal: MACD histogram divergence ──────────────────────────────────
+
+def _swing_low_indices(low: pd.Series, order: int) -> list[int]:
+    """Indices of price swing lows: bar is the min of ±order window and strictly
+    below both immediate neighbours (a real turning point)."""
+    idxs: list[int] = []
+    n = len(low)
+    for i in range(order, n - order):
+        window = low.iloc[i - order: i + order + 1]
+        if window.isna().any():
+            continue
+        if low.iloc[i] == window.min() and low.iloc[i] < low.iloc[i - 1] and low.iloc[i] < low.iloc[i + 1]:
+            idxs.append(i)
+    return idxs
+
+
+def _swing_high_indices(high: pd.Series, order: int) -> list[int]:
+    idxs: list[int] = []
+    n = len(high)
+    for i in range(order, n - order):
+        window = high.iloc[i - order: i + order + 1]
+        if window.isna().any():
+            continue
+        if high.iloc[i] == window.max() and high.iloc[i] > high.iloc[i - 1] and high.iloc[i] > high.iloc[i + 1]:
+            idxs.append(i)
+    return idxs
+
+
+def scan_divergence_buy(
+    df: pd.DataFrame,
+    pivot_order: int = 2,
+    min_gap: int = 3,
+    max_gap: int = 40,
+) -> pd.DataFrame:
+    """Bullish MACD-histogram divergence: price makes a lower low while the
+    histogram makes a higher low (in negative territory). Emits at the bar where
+    the second swing low is confirmable (pivot + pivot_order) to stay causal."""
+    if not {"low", "histogram", "date"}.issubset(df.columns):
+        raise ValueError("Missing required columns. Call add_macd() first.")
+    low = df["low"].reset_index(drop=True)
+    hist = df["histogram"].reset_index(drop=True)
+    dates = df["date"].reset_index(drop=True)
+    lows = _swing_low_indices(low, pivot_order)
+    rows: list[dict] = []
+    last = len(df) - 1
+    for a, b in zip(lows, lows[1:]):
+        gap = b - a
+        if gap < min_gap or gap > max_gap:
+            continue
+        if pd.isna(hist.iloc[a]) or pd.isna(hist.iloc[b]):
+            continue
+        if low.iloc[b] < low.iloc[a] and hist.iloc[b] > hist.iloc[a] and hist.iloc[b] < 0:
+            conf = min(b + pivot_order, last)
+            rows.append({
+                "date": str(dates.iloc[conf])[:10],
+                "pivot_date": str(dates.iloc[b])[:10],
+                "close": float(df["close"].reset_index(drop=True).iloc[conf]) if "close" in df else 0.0,
+            })
+    return pd.DataFrame(rows)
+
+
+def scan_divergence_sell(
+    df: pd.DataFrame,
+    pivot_order: int = 2,
+    min_gap: int = 3,
+    max_gap: int = 40,
+) -> pd.DataFrame:
+    """Bearish MACD-histogram divergence: price makes a higher high while the
+    histogram makes a lower high (in positive territory)."""
+    if not {"high", "histogram", "date"}.issubset(df.columns):
+        raise ValueError("Missing required columns. Call add_macd() first.")
+    high = df["high"].reset_index(drop=True)
+    hist = df["histogram"].reset_index(drop=True)
+    dates = df["date"].reset_index(drop=True)
+    highs = _swing_high_indices(high, pivot_order)
+    rows: list[dict] = []
+    last = len(df) - 1
+    for a, b in zip(highs, highs[1:]):
+        gap = b - a
+        if gap < min_gap or gap > max_gap:
+            continue
+        if pd.isna(hist.iloc[a]) or pd.isna(hist.iloc[b]):
+            continue
+        if high.iloc[b] > high.iloc[a] and hist.iloc[b] < hist.iloc[a] and hist.iloc[b] > 0:
+            conf = min(b + pivot_order, last)
+            rows.append({
+                "date": str(dates.iloc[conf])[:10],
+                "pivot_date": str(dates.iloc[b])[:10],
+                "close": float(df["close"].reset_index(drop=True).iloc[conf]) if "close" in df else 0.0,
+            })
+    return pd.DataFrame(rows)
+
+
 def diagnose_strategy_d(
     df: pd.DataFrame,
     date: str,
@@ -697,6 +790,10 @@ class StrategyD(StrategyBase):
             "max_violations": 1,
             "lookback_bars": 20,
             "enable_sell_signal": True,
+            "enable_early_signal": False,
+            "early_pivot_order": 2,
+            "early_min_gap": 3,
+            "early_max_gap": 40,
             "macd_fast": 12,
             "macd_slow": 26,
             "macd_signal": 9,
@@ -759,6 +856,30 @@ class StrategyD(StrategyBase):
                     strategy_id=self.strategy_id,
                     metadata={"close": float(row.get("close", 0))},
                 ))
+
+        if p.get("enable_early_signal", False):
+            pivot_order = int(p.get("early_pivot_order", 2))
+            min_gap = int(p.get("early_min_gap", 3))
+            max_gap = int(p.get("early_max_gap", 40))
+            div_buy = scan_divergence_buy(df, pivot_order, min_gap, max_gap)
+            for _, row in div_buy.iterrows():
+                signals.append(Signal(
+                    date=str(row["date"])[:10],
+                    signal_type="buy",
+                    strategy_id=self.strategy_id,
+                    tier="early",
+                    metadata={"close": float(row.get("close", 0)), "pivot_date": str(row.get("pivot_date", ""))},
+                ))
+            if p.get("enable_sell_signal", True):
+                div_sell = scan_divergence_sell(df, pivot_order, min_gap, max_gap)
+                for _, row in div_sell.iterrows():
+                    signals.append(Signal(
+                        date=str(row["date"])[:10],
+                        signal_type="sell",
+                        strategy_id=self.strategy_id,
+                        tier="early",
+                        metadata={"close": float(row.get("close", 0)), "pivot_date": str(row.get("pivot_date", ""))},
+                    ))
 
         return signals
 

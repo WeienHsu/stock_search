@@ -7,7 +7,7 @@ import { ScannerTable } from "./components/ScannerTable";
 import { SidePanel } from "./components/SidePanel";
 import { SymbolHeader } from "./components/SymbolHeader";
 import { Watchlist } from "./components/Watchlist";
-import type { KlineResponse, Quote, WatchlistItem } from "./types";
+import type { KlineResponse, Quote, SignalMode, WatchlistItem } from "./types";
 
 const UPDOWN_COLORS = {
   tw: { up: "#f23645", down: "#089981" },
@@ -41,6 +41,8 @@ export default function App() {
   const [interval, setInterval_] = useState("1d");
   const [period, setPeriod] = useState("1Y");
   const [strategyId, setStrategyId] = useState("strategy_d");
+  const [signalMode, setSignalMode] = useState<SignalMode>("confirmed");
+  const [showBias, setShowBias] = useState(false);
   const [kline, setKline] = useState<KlineResponse | null>(null);
   const [klineError, setKlineError] = useState<string | null>(null);
   const [alertMode, setAlertMode] = useState(false);
@@ -79,13 +81,13 @@ export default function App() {
     let cancelled = false;
     setKlineError(null);
     api
-      .kline(symbol, interval, period, strategyId)
+      .kline(symbol, interval, period, strategyId, signalMode !== "confirmed")
       .then((data) => !cancelled && setKline(data))
       .catch((err: Error) => !cancelled && setKlineError(err.message));
     return () => {
       cancelled = true;
     };
-  }, [symbol, interval, period, strategyId]);
+  }, [symbol, interval, period, strategyId, signalMode]);
 
   const { data: allAlerts, refresh: refreshAlerts } = usePoll(() => api.alerts(), 30_000);
   const symbolAlerts = useMemo(
@@ -139,6 +141,10 @@ export default function App() {
           strategyId={strategyId}
           setStrategyId={setStrategyId}
           strategies={strategies ?? []}
+          signalMode={signalMode}
+          setSignalMode={setSignalMode}
+          showBias={showBias}
+          setShowBias={setShowBias}
         />
         {klineError && <div className="error-banner">{klineError}</div>}
         <KlineChart
@@ -147,6 +153,8 @@ export default function App() {
           upColor={upColor}
           downColor={downColor}
           theme={theme}
+          signalMode={signalMode}
+          showBias={showBias}
           alertMode={alertMode}
           onAlertPrice={(price) => {
             setPendingPrice(price);

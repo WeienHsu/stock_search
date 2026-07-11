@@ -378,6 +378,14 @@ select:focus {
   align-items: center;
 }
 
+.symbol-header .signal-mode {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
 .chart-host {
   flex: 1;
   min-height: 0;

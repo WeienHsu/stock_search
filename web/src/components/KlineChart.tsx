@@ -16,7 +16,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { Alert, KlineResponse } from "./../types";
+import type { Alert, KlineResponse, SignalMode } from "./../types";
 import { fmtPrice } from "../format";
 
 const MA_COLORS: Record<string, string> = {
@@ -36,6 +36,19 @@ const CHART_THEMES = {
 // into the red price line and volume bars. Blue/orange stay visible everywhere.
 const LATEST_BUY = "#2979ff";
 const LATEST_SELL = "#ff6d00";
+// Early (divergence) markers: muted tints + circle shape so they read as
+// tentative hints, clearly distinct from the solid confirmed arrows.
+const EARLY_BUY = "#7eb6ff";
+const EARLY_SELL = "#ffb27a";
+
+// A buy at a deep negative bias (price far below MA20) is, per the bottom-strength
+// study, a stronger bottom worth weighting more. Buys at/below this get emphasized.
+const STRONG_BIAS = -8;
+const BIAS_POS = "#34d399";
+const BIAS_NEG = "#f97316";
+
+const biasOf = (close: number, ma20: number | null | undefined): number | null =>
+  ma20 == null || ma20 === 0 ? null : ((close - ma20) / ma20) * 100;
 
 interface Props {
   data: KlineResponse | null;
@@ -43,6 +56,8 @@ interface Props {
   upColor: string;
   downColor: string;
   theme: "dark" | "light";
+  signalMode: SignalMode;
+  showBias: boolean;
   alertMode: boolean;
   onAlertPrice: (price: number) => void;
 }
@@ -57,6 +72,7 @@ interface Refs {
   macdSignal: ISeriesApi<"Line">;
   k: ISeriesApi<"Line">;
   d: ISeriesApi<"Line">;
+  bias: ISeriesApi<"Histogram"> | null;
   markers: ISeriesMarkersPluginApi<Time>;
   priceLines: IPriceLine[];
 }
@@ -68,7 +84,7 @@ function toTime(value: string): Time {
   return value as Time;
 }
 
-export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode, onAlertPrice }: Props) {
+export function KlineChart({ data, alerts, upColor, downColor, theme, signalMode, showBias, alertMode, onAlertPrice }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Refs | null>(null);
   const [legend, setLegend] = useState("");
@@ -168,6 +184,7 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
       macdSignal,
       k,
       d,
+      bias: null,
       markers,
       priceLines: [],
     };
@@ -238,13 +255,20 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
 
     const byDate = new Map(data.candles.map((c) => [c.time.slice(0, 10), c]));
     const indexByDate = new Map(data.candles.map((c, i) => [c.time.slice(0, 10), i]));
-    const visible = data.signals
+    const ma20 = data.indicators.ma["20"] ?? [];
+    const biasByDate = new Map(
+      data.candles.map((c, i) => [c.time.slice(0, 10), biasOf(c.close, ma20[i])]),
+    );
+    const tierOf = (s: { tier?: string }) => s.tier ?? "confirmed";
+    const all = data.signals
       .filter((s) => byDate.has(s.date) && s.type !== "neutral")
       .sort((a, b) => (a.date < b.date ? -1 : 1));
-    // Collapse runs of the same signal on consecutive bars into the latest one.
-    // lightweight-charts drops markers when adjacent-bar markers cluster (even
-    // out-of-view clusters), which was hiding the most recent buy/sell arrow once
-    // the chart was zoomed in.
+
+    // Confirmed arrows: collapse runs of the same signal on consecutive bars into
+    // the latest one. lightweight-charts drops markers when adjacent-bar markers
+    // cluster (even out-of-view clusters), which was hiding the most recent
+    // buy/sell arrow once the chart was zoomed in.
+    const visible = signalMode === "early" ? [] : all.filter((s) => tierOf(s) === "confirmed");
     const collapsed = visible.filter((s, i) => {
       const next = visible[i + 1];
       return !(
@@ -256,8 +280,20 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
     const lastBuy = collapsed.filter((s) => s.type === "buy").map((s) => s.date).sort().at(-1);
     const lastSell = collapsed.filter((s) => s.type === "sell").map((s) => s.date).sort().at(-1);
     // Latest signal of each type is emphasized; history stays small and quiet.
-    const markerList: SeriesMarker<Time>[] = collapsed.map((s) => {
+    // Buy arrows also encode bias-below-MA20 strength: a deep negative bias (a
+    // stronger bottom) is enlarged and labelled with the bias %; the latest buy
+    // additionally carries 「買」. Sell arrows are unchanged (bias unvalidated there).
+    const confirmedMarkers: SeriesMarker<Time>[] = collapsed.map((s) => {
       const isLatest = s.date === (s.type === "buy" ? lastBuy : lastSell);
+      const bias = s.type === "buy" ? biasByDate.get(s.date) ?? null : null;
+      const strong = bias != null && bias <= STRONG_BIAS;
+      const biasStr = bias != null ? `${bias.toFixed(0)}%` : "";
+      let text: string | undefined;
+      if (s.type === "buy") {
+        text = isLatest ? `買 ${biasStr}`.trim() : strong ? biasStr : undefined;
+      } else {
+        text = isLatest ? "賣" : undefined;
+      }
       return {
         time: toTime(byDate.get(s.date)!.time),
         position: s.type === "buy" ? "belowBar" : "aboveBar",
@@ -269,13 +305,75 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
           : s.type === "buy"
             ? upColor
             : downColor,
-        text: isLatest ? (s.type === "buy" ? "買" : "賣") : undefined,
-        size: isLatest ? 2 : 1,
+        text,
+        size: isLatest || strong ? 2 : 1,
       };
+    });
+
+    // Early (divergence) hints: muted circles labelled「早」, on the same side as
+    // the eventual arrow so they read as a precursor to it.
+    const earlySigs = signalMode === "confirmed" ? [] : all.filter((s) => tierOf(s) === "early");
+    const earlyMarkers: SeriesMarker<Time>[] = earlySigs.map((s) => ({
+      time: toTime(byDate.get(s.date)!.time),
+      position: s.type === "buy" ? "belowBar" : "aboveBar",
+      shape: "circle",
+      color: s.type === "buy" ? EARLY_BUY : EARLY_SELL,
+      text: "早",
+      size: 1,
+    }));
+
+    // Daily markers carry ISO date strings (chronological under string compare);
+    // intraday markers carry numeric timestamps. Handle both.
+    const markerList = [...confirmedMarkers, ...earlyMarkers].sort((a, b) => {
+      if (typeof a.time === "number" && typeof b.time === "number") return a.time - b.time;
+      return String(a.time) < String(b.time) ? -1 : String(a.time) > String(b.time) ? 1 : 0;
     });
     r.markers.setMarkers(markerList);
     r.chart.timeScale().fitContent();
-  }, [data, upColor, downColor]);
+  }, [data, upColor, downColor, signalMode]);
+
+  // Optional bias (distance below MA20) sub-pane, created on demand (default off)
+  // so it doesn't crowd the chart. Removing the series drops its (now empty) pane.
+  useEffect(() => {
+    const r = refs.current;
+    if (!r) return;
+    if (!showBias) {
+      if (r.bias) {
+        r.chart.removeSeries(r.bias);
+        r.bias = null;
+      }
+      return;
+    }
+    if (!r.bias) {
+      r.bias = r.chart.addSeries(
+        HistogramSeries,
+        { priceFormat: { type: "price", precision: 1, minMove: 0.1 }, lastValueVisible: false, priceLineVisible: false },
+        3,
+      );
+      r.bias.createPriceLine({
+        price: STRONG_BIAS,
+        color: BIAS_NEG,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "強底",
+      });
+      const panes = r.chart.panes();
+      panes[0]?.setStretchFactor(300);
+      panes[1]?.setStretchFactor(70);
+      panes[2]?.setStretchFactor(70);
+      panes[3]?.setStretchFactor(70);
+    }
+    if (data) {
+      const ma20 = data.indicators.ma["20"] ?? [];
+      r.bias.setData(
+        data.candles.flatMap((c, i) => {
+          const b = biasOf(c.close, ma20[i]);
+          return b == null ? [] : [{ time: toTime(c.time), value: b, color: b < 0 ? BIAS_NEG : BIAS_POS }];
+        }),
+      );
+    }
+  }, [data, showBias]);
 
   // Alert price lines
   useEffect(() => {
@@ -306,15 +404,18 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
         return;
       }
       const target = typeof param.time === "string" ? param.time : null;
-      const candle = data.candles.find((c) =>
+      const idx = data.candles.findIndex((c) =>
         target ? c.time === target : toTime(c.time) === param.time,
       );
+      const candle = idx >= 0 ? data.candles[idx] : undefined;
       if (!candle) {
         setLegend("");
         return;
       }
+      const bias = biasOf(candle.close, (data.indicators.ma["20"] ?? [])[idx]);
+      const biasStr = bias != null ? `  乖離 ${bias.toFixed(1)}%` : "";
       setLegend(
-        `O ${fmtPrice(candle.open)}  H ${fmtPrice(candle.high)}  L ${fmtPrice(candle.low)}  C ${fmtPrice(candle.close)}`,
+        `O ${fmtPrice(candle.open)}  H ${fmtPrice(candle.high)}  L ${fmtPrice(candle.low)}  C ${fmtPrice(candle.close)}${biasStr}`,
       );
     };
     r.chart.subscribeCrosshairMove(handler);
@@ -323,7 +424,7 @@ export function KlineChart({ data, alerts, upColor, downColor, theme, alertMode,
 
   const signalDates = (type: "buy" | "sell") =>
     (data?.signals ?? [])
-      .filter((s) => s.type === type)
+      .filter((s) => s.type === type && (s.tier ?? "confirmed") === "confirmed")
       .map((s) => s.date)
       .sort()
       .at(-1);
